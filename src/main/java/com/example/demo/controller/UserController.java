@@ -25,4 +25,6 @@ public class UserController {
     public User createUser(@RequestBody User user) {
         return userRepository.save(user);
     }
+
+
 }

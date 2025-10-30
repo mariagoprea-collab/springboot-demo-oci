@@ -1,0 +1,52 @@
+<input type="text" id="name" placeholder="Nume client">
+<input type="date" id="scheduledDate">
+<button onclick="addUser()">Adaugă programare</button>
+
+<ul id="userList"></ul>
+
+<script>
+    async function addUser() {
+        const name = document.getElementById("name").value;
+        const scheduledDate = document.getElementById("scheduledDate").value;
+
+        if (!name || !scheduledDate) {
+            alert("Completați numele și data!");
+            return;
+        }
+
+        const response = await fetch("/users", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ name, scheduledDate })
+        });
+
+        if (!response.ok) {
+            alert("Eroare la adăugarea programarii");
+            return;
+        }
+
+        const user = await response.json();
+        const li = document.createElement("li");
+        li.textContent = `${user.name} - ${user.scheduledDate}`;
+        document.getElementById("userList").appendChild(li);
+
+        // curățare inputuri
+        document.getElementById("name").value = '';
+        document.getElementById("scheduledDate").value = '';
+    }
+
+    // opțional: la încărcarea paginii, listează toți userii
+    async function loadUsers() {
+        const response = await fetch("/users");
+        const users = await response.json();
+        const ul = document.getElementById("userList");
+        ul.innerHTML = '';
+        users.forEach(user => {
+            const li = document.createElement("li");
+            li.textContent = `${user.name} - ${user.scheduledDate}`;
+            ul.appendChild(li);
+        });
+    }
+
+    window.onload = loadUsers;
+</script>
