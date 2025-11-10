@@ -26,6 +26,7 @@ jobs:
       id: login-ocir
       with:
         auth_token: ${{ secrets.OCIR_PASSWORD }}
+        region: ${{ secrets.OCIR_REGION }}
 
     - name: Build Docker image
       run: docker build -t "${{ secrets.OCIR_REGION }}.ocir.io/${{ secrets.OCIR_NAMESPACE }}/${{ secrets.OCIR_REPO }}:latest" .
