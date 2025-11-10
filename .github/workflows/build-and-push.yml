@@ -21,8 +21,11 @@ jobs:
     - name: Build JAR with Maven
       run: mvn clean package -DskipTests
 
-    - name: Log in to OCIR
-      run: echo "${{ secrets.OCIR_PASSWORD }}" | docker login "${{ secrets.OCIR_REGION }}.ocir.io" -u "${{ secrets.OCIR_USERNAME }}" --password-stdin
+    - name: Log into OCIR
+      uses: oracle-actions/login-ocir@v1.3.0
+      id: login-ocir
+      with:
+        auth_token: ${{ secrets.OCIR_PASSWORD }}
 
     - name: Build Docker image
       run: docker build -t "${{ secrets.OCIR_REGION }}.ocir.io/${{ secrets.OCIR_NAMESPACE }}/${{ secrets.OCIR_REPO }}:latest" .
