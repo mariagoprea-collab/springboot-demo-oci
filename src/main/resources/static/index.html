@@ -1,52 +1,159 @@
-<input type="text" id="name" placeholder="Nume client">
-<input type="date" id="scheduledDate">
-<button onclick="addUser()">Adaugă programare</button>
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointment Manager</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #fff0f5;
+            margin: 0;
+            padding: 0;
+        }
 
-<ul id="userList"></ul>
+        header {
+            background-color: #ff80b3;
+            color: white;
+            text-align: center;
+            padding: 25px 0;
+            font-size: 2rem;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        main {
+            max-width: 600px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .form-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .form-container input, .form-container button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+
+        .form-container button {
+            background-color: #ff4d94;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .form-container button:hover {
+            background-color: #e60073;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #ff80b3;
+            color: white;
+            font-weight: bold;
+        }
+
+        tr:hover {
+            background-color: #ffe6f0;
+        }
+    </style>
+</head>
+<body>
+
+<header>Appointments</header>
+
+<main>
+    <div class="form-container">
+        <input type="text" id="name" placeholder="Client name">
+        <input type="datetime-local" id="scheduledDateTime">
+        <button onclick="addUser()">Add appointment</button>
+    </div>
+
+    <table id="appointmentTable">
+        <thead>
+        <tr>
+            <th>Client name</th>
+            <th>Date and Time</th>
+        </tr>
+        </thead>
+        <tbody id="userList">
+        </tbody>
+    </table>
+</main>
 
 <script>
     async function addUser() {
         const name = document.getElementById("name").value;
-        const scheduledDate = document.getElementById("scheduledDate").value;
+        const scheduledDateTime = document.getElementById("scheduledDateTime").value;
 
-        if (!name || !scheduledDate) {
-            alert("Completați numele și data!");
+        if (!name || !scheduledDateTime) {
+            alert("Please enter the name and date & time!");
             return;
         }
 
         const response = await fetch("/users", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ name, scheduledDate })
+            body: JSON.stringify({ name, scheduledDateTime })
         });
 
         if (!response.ok) {
-            alert("Eroare la adăugarea programarii");
+            alert("Error adding the appointment");
             return;
         }
 
         const user = await response.json();
-        const li = document.createElement("li");
-        li.textContent = `${user.name} - ${user.scheduledDate}`;
-        document.getElementById("userList").appendChild(li);
+        addUserRow(user);
 
-        // curățare inputuri
         document.getElementById("name").value = '';
-        document.getElementById("scheduledDate").value = '';
+        document.getElementById("scheduledDateTime").value = '';
     }
 
-    // opțional: la încărcarea paginii, listează toți userii
+    function addUserRow(user) {
+        const tbody = document.getElementById("userList");
+        const row = document.createElement("tr");
+        // înlocuim 'T' cu spațiu pentru afișare mai frumoasă
+        const formattedDateTime = user.scheduledDateTime.replace('T', ' ');
+        row.innerHTML = `<td>${user.name}</td><td>${formattedDateTime}</td>`;
+        tbody.appendChild(row);
+    }
+
     async function loadUsers() {
         const response = await fetch("/users");
         const users = await response.json();
-        const ul = document.getElementById("userList");
-        ul.innerHTML = '';
-        users.forEach(user => {
-            const li = document.createElement("li");
-            li.textContent = `${user.name} - ${user.scheduledDate}`;
-            ul.appendChild(li);
-        });
+        const tbody = document.getElementById("userList");
+        tbody.innerHTML = '';
+        users.forEach(addUserRow);
     }
 
     window.onload = loadUsers;
 </script>
+
+</body>
+</html>
