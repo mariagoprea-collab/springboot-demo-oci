@@ -52,6 +52,7 @@
 	</dependencies>
 
 	<build>
+		<finalName>spring-boot-demo-eci</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>

@@ -2,7 +2,7 @@ package com.example.demo.model;
 
 import jakarta.persistence.*;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "app_user")
@@ -11,30 +11,32 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String name;
-    // Data când este programat clientul
-    private LocalDate scheduledDate;
+    private LocalDateTime scheduledDateTime;
+
     // Getters & Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
-    public LocalDate getScheduledDate() {
-        return scheduledDate;
+    public LocalDateTime getScheduledDateTime() {
+        return scheduledDateTime;
     }
-    public void setScheduledDate(LocalDate scheduledDate) {
-        this.scheduledDate = scheduledDate;
+    public void setScheduledDateTime(LocalDateTime scheduledDateTime) {
+        this.scheduledDateTime = scheduledDateTime;
     }
-    public User(String name, LocalDate scheduledDate) {
+    // constructor actualizat
+    public User(String name, LocalDateTime scheduledDate) {
         this.name = name;
-        this.scheduledDate = scheduledDate;
+        this.scheduledDateTime = scheduledDate;
     }
     @Override
     public String toString() {
         return "Client{" +
                 "id=" + id +
                 ", name='" + name + '\'' +
-                ", scheduledDate=" + scheduledDate +
+                ", scheduledDateTime=" + scheduledDateTime +
                 '}';
     }
+    public User(){}
 }
