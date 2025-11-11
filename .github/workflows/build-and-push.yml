@@ -7,7 +7,13 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
+    name: Get OCIR Repository Test
+    env:
+      OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+      OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+      OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+      OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+      OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -21,15 +27,22 @@ jobs:
     - name: Build JAR with Maven
       run: mvn clean package -DskipTests
 
+    - name: Get or create an OCIR Repository
+      uses: oracle-actions/get-ocir-repository@v1.3.0
+      id: get-ocir-repository
+      with:
+        name: springbootapp
+        compartment: ${{ secrets.OCI_COMPARTMENT_OCID }}
+
     - name: Log into OCIR
       uses: oracle-actions/login-ocir@v1.3.0
       id: login-ocir
       with:
-        auth_token: ${{ secrets.OCIR_PASSWORD }}
-        region: ${{ secrets.OCIR_REGION }}
+        auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
 
-    - name: Build Docker image
-      run: docker build -t "${{ secrets.OCIR_REGION }}.ocir.io/${{ secrets.OCIR_NAMESPACE }}/${{ secrets.OCIR_REPO }}:latest" .
-
-    - name: Push Docker image to OCIR
-      run: docker push "${{ secrets.OCIR_REGION }}.ocir.io/${{ secrets.OCIR_NAMESPACE }}/${{ secrets.OCIR_REPO }}:latest"
+    - name: Tag and push a container image
+      id: tag-and-push-image
+      run: |
+        docker pull springbootapp:8-slim
+        docker tag "springbootapp:8-slim" "${{ steps.get-ocir-repository.outputs.repo_path }}:8-slim"
+        docker push "${{ steps.get-ocir-repository.outputs.repo_path }}:8-slim"
