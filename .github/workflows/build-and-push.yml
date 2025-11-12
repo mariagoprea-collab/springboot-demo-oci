@@ -53,26 +53,20 @@ jobs:
       OCI_CLI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
       OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
       OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
+      OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
       DB_HOST: ${{ secrets.DB_HOST }}
       DB_NAME: ${{ secrets.DB_NAME }}
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASS: ${{ secrets.DB_PASS }}
       IMAGE: fra.ocir.io/frwunln9uqph/demo:latest
     steps:
-      - name: Retrieve compartment ID
-        uses: oracle-actions/run-oci-cli-command@v1.3.2
-        id: find-compartment-id
-        with:
-          command: "iam compartment list --compartment-id-in-subtree=true"
-          query: "data[?name=='testing'].id"
-
       - name: Deploy container instance
         uses: oracle-actions/run-oci-cli-command@v1.3.2
         with:
           command: |
             oci container instance create \
               --display-name demo-app \
-              --compartment-id ${{ fromJson(steps.find-compartment-id.outputs.raw_output)[0] }} \
+              --compartment-id ${{ secrets.OCI_COMPARTMENT_OCID }} \
               --image $IMAGE \
               --subnet-id ${{ secrets.OCI_SUBNET_OCID }} \
               --shape VM.Standard.E2.1 \
