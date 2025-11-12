@@ -43,7 +43,7 @@ jobs:
     - name: Build and push Docker image to OCIR
       run: |
         # Set your image name
-        IMAGE=${{ secrets.OCI_CLI_REGION }}.ocir.io/${{ secrets.OCI_CLI_TENANCY }}/demo:latest
+        IMAGE=fra.ocir.io/test/demo:latest
         
         # Build image
         docker build -t $IMAGE .
