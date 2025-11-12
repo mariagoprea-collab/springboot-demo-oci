@@ -1,78 +1,73 @@
-name: Build and Push to OCIR
+name: Build, Push, and Deploy to OCI
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    name: Get OCIR Repository Test
     env:
-      OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-      OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-      OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
-      OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-      OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
       NAMESPACE: frwunln9uqph
       OCI_REGION: fra
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v3
-      with:
-        distribution: 'temurin'
-        java-version: 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 17
 
-    - name: Log into OCIR
-      uses: oracle-actions/login-ocir@v1.3.0
-      id: login-ocir
-      with:
-        auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
+      - name: Log into OCIR
+        uses: oracle-actions/login-ocir@v1.3.0
+        with:
+          auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
 
-    - name: Build JAR with Maven
-      run: mvn clean package -DskipTests
+      - name: Build JAR with Maven
+        run: mvn clean package -DskipTests
 
-    - name: Build and push Docker image
-      run: |
-        # Use the 'image' output from the previous step
-        IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
-        echo "Building Docker image $IMAGE"
-        docker build -t $IMAGE .
-        docker push $IMAGE
-    - name: Install OCI CLI
-      run: |
-        # Download installer
-        curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o install.sh
-        # Make it executable
-        chmod +x install.sh
-        # Run non-interactive
-        bash install.sh --accept-all-defaults --install-dir $HOME/oci-cli
-        # Add OCI CLI to PATH
-        export PATH=$HOME/oci-cli/bin:$PATH
-        # Verify installation
-        oci --version
-    - name: Deploy to OCI Container Instance
-      run: |
-        echo "Deploying container to OCI"
-        oci container instance create \
-          --display-name demo-app \
-          --compartment-id ${{ secrets.OCI_COMPARTMENT_OCID }} \
-          --image ${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest \
-          --subnet-id ${{ secrets.OCI_SUBNET_OCID }} \
-          --shape VM.Standard.E2.1 \
-          --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
-          --assign-public-ip true \
-          --environment-variables "[\
-            {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
-            {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
-            {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
-          ]"
-      env:
-        OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-        OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY }}
-        OCI_CLI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-        OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
-        OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
+      - name: Build and push Docker image
+        run: |
+          IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
+          echo "Building Docker image $IMAGE"
+          docker build -t $IMAGE .
+          docker push $IMAGE
+
+      - name: Install OCI CLI
+        run: |
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o install.sh
+          chmod +x install.sh
+          bash install.sh --accept-all-defaults --install-dir $HOME/oci-cli
+          echo "$HOME/oci-cli/bin" >> $GITHUB_PATH
+
+      - name: Verify OCI CLI
+        run: oci --version
+
+      - name: Deploy to OCI Container Instance
+        env:
+          OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
+          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+        run: |
+          echo "Deploying container to OCI"
+          oci container instance create \
+            --display-name demo-app \
+            --compartment-id ${{ secrets.OCI_COMPARTMENT_OCID }} \
+            --image ${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest \
+            --subnet-id ${{ secrets.OCI_SUBNET_OCID }} \
+            --shape VM.Standard.E2.1 \
+            --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
+            --assign-public-ip true \
+            --environment-variables "[\
+              {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}\"},\
+              {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${DB_USER}\"},\
+              {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${DB_PASS}\"}\
+            ]"
