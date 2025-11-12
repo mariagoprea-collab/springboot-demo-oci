@@ -24,9 +24,6 @@ jobs:
         distribution: 'temurin'
         java-version: 17
 
-    - name: Build JAR with Maven
-      run: mvn clean package -DskipTests
-
     - name: Get or create an OCIR Repository
       uses: oracle-actions/get-ocir-repository@v1.3.0
       id: get-ocir-repository
@@ -40,9 +37,16 @@ jobs:
       with:
         auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
 
-    - name: Tag and push a container image
-      id: tag-and-push-image
+    - name: Build JAR with Maven
+      run: mvn clean package -DskipTests
+
+    - name: Build and push Docker image to OCIR
       run: |
-        docker pull springbootapp:8-slim
-        docker tag "springbootapp:8-slim" "${{ steps.get-ocir-repository.outputs.repo_path }}:8-slim"
-        docker push "${{ steps.get-ocir-repository.outputs.repo_path }}:8-slim"
+        # Set your image name
+        IMAGE=${{ secrets.OCI_CLI_REGION }}.ocir.io/${{ secrets.OCI_CLI_TENANCY }}/demo:latest
+        
+        # Build image
+        docker build -t $IMAGE .
+        
+        # Push to OCIR
+        docker push $IMAGE
