@@ -42,7 +42,10 @@ jobs:
         echo "Building Docker image $IMAGE"
         docker build -t $IMAGE .
         docker push $IMAGE
-
+    - name: Install OCI CLI
+      run: |
+        curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash
+        export PATH=$PATH:$HOME/bin
     - name: Deploy to OCI Container Instance
       run: |
         echo "Deploying container to OCI"
