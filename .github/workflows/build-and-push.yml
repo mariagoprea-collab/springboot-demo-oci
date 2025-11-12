@@ -24,18 +24,18 @@ jobs:
         distribution: 'temurin'
         java-version: 17
 
-    - name: Get or create OCIR Repository
-      uses: oracle-actions/get-ocir-repository@v1.3.0
-      id: get-ocir-repository
-      with:
-        name: springbootapp
-        compartment: ${{ secrets.OCI_COMPARTMENT_OCID }}
-
     - name: Log into OCIR
       uses: oracle-actions/login-ocir@v1.3.0
       id: login-ocir
       with:
         auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
+
+    - name: Get or create OCIR repository
+      uses: oracle-actions/get-ocir-repository@v1.3.0
+      id: get-ocir-repository
+      with:
+        name: springbootapp
+        compartment: ${{ secrets.OCI_COMPARTMENT_OCID }}
 
     - name: Build JAR with Maven
       run: mvn clean package -DskipTests
