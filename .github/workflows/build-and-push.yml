@@ -43,7 +43,7 @@ jobs:
     - name: Build and push Docker image
       run: |
         # Use the 'image' output from the previous step
-        IMAGE=${{ steps.get-ocir-repository.outputs.image }}:latest
+        IMAGE=fra.ocir.io/frwunln9uqph/demo:latest
         echo "Building Docker image $IMAGE"
         docker build -t $IMAGE .
         docker push $IMAGE
