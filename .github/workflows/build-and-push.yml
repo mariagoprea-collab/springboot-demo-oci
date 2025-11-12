@@ -42,8 +42,7 @@ jobs:
 
     - name: Build and push Docker image to OCIR
       run: |
-        # Set your image name
-        IMAGE=fra.ocir.io/test/demo:latest
+        IMAGE=${{ steps.get-ocir-repository.outputs.image }}:latest
         
         # Build image
         docker build -t $IMAGE .
