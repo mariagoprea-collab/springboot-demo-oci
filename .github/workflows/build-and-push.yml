@@ -44,9 +44,16 @@ jobs:
         docker push $IMAGE
     - name: Install OCI CLI
       run: |
+        # Download installer
         curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o install.sh
-        bash install.sh --accept-all-defaults --install-dir $HOME/oci-cli --bin-dir $HOME/bin
-        export PATH=$HOME/bin:$PATH
+        # Make it executable
+        chmod +x install.sh
+        # Run non-interactive
+        bash install.sh --accept-all-defaults --install-dir $HOME/oci-cli
+        # Add OCI CLI to PATH
+        export PATH=$HOME/oci-cli/bin:$PATH
+        # Verify installation
+        oci --version
     - name: Deploy to OCI Container Instance
       run: |
         echo "Deploying container to OCI"
