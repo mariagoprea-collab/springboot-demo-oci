@@ -24,7 +24,7 @@ jobs:
         distribution: 'temurin'
         java-version: 17
 
-    - name: Get or create an OCIR Repository
+    - name: Get or create OCIR Repository
       uses: oracle-actions/get-ocir-repository@v1.3.0
       id: get-ocir-repository
       with:
@@ -40,12 +40,10 @@ jobs:
     - name: Build JAR with Maven
       run: mvn clean package -DskipTests
 
-    - name: Build and push Docker image to OCIR
+    - name: Build and push Docker image
       run: |
+        # Use the 'image' output from the previous step
         IMAGE=${{ steps.get-ocir-repository.outputs.image }}:latest
-        
-        # Build image
+        echo "Building Docker image $IMAGE"
         docker build -t $IMAGE .
-        
-        # Push to OCIR
         docker push $IMAGE
