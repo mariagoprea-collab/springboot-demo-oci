@@ -14,6 +14,9 @@ jobs:
       OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
       OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
       OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+      SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
+      SHAPE: VM.Standard.E2.1
+      CONTAINER_NAME: demo-app
       NAMESPACE: frwunln9uqph
       OCI_REGION: fra
     steps:
@@ -43,48 +46,40 @@ jobs:
         docker build -t $IMAGE .
         docker push $IMAGE
 
-  deploy-container:
-    runs-on: ubuntu-latest
-    name: Deploy container from registry to OCI Container Instance
-    env:
-      OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-      OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-      OCI_CLI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-      OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
-      OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
-      OCI_CLI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }} # optional, dacă vrei static
-      IMAGE: fra.ocir.io/frwunln9uqph/demo:latest
-      SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
-      SHAPE: VM.Standard.E2.1
-      CONTAINER_NAME: demo-app
-    steps:
-      # 1️⃣ Checkout repository
-      - name: Checkout repository
-        uses: actions/checkout@v2
+    - name: Retrieve the OCID of a named compartment in tenancy
+      uses: oracle-actions/run-oci-cli-command@v1.3.2
+      id: find-compartment-id
+      with:
+        command: 'iam compartment list --compartment-id-in-subtree=true'
+        query: "data[?name=='root'].id"
+
+    - name: Checkout repository
+      uses: actions/checkout@v2
 
       # 2️⃣ Găsește OCID-ul compartimentului "root" (sau alt nume)
-      - name: Retrieve OCID of compartment
-        id: find-compartment-id
-        uses: oracle-actions/run-oci-cli-command@v1.3.2
-        with:
-          command: 'iam compartment list --compartment-id-in-subtree=true'
-          query: "data[?name=='root'].id"
+    - name: Retrieve OCID of compartment
+      id: find-compartment-id
+      uses: oracle-actions/run-oci-cli-command@v1.3.2
+      with:
+        command: 'iam compartment list --compartment-id-in-subtree=true'
+        query: "data[?name=='root'].id"
 
       # 3️⃣ Creează Container Instance și rulează imaginea
-      - name: Create Container Instance with image
-        uses: oracle-actions/run-oci-cli-command@v1.3.2
-        with:
-          command: |
-            oci container instance create \
-              --display-name $CONTAINER_NAME \
-              --compartment-id ${{ steps.find-compartment-id.outputs.result }} \
-              --image $IMAGE \
-              --subnet-id $SUBNET_ID \
-              --shape $SHAPE \
-              --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
-              --assign-public-ip true \
-              --environment-variables "[\
-                {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
-                {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
-                {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
-              ]"
+    - name: Create Container Instance with image
+      uses: oracle-actions/run-oci-cli-command@v1.3.2
+      with:
+        command: |
+          oci container instance create \
+            --display-name $CONTAINER_NAME \
+            --compartment-id ${{ steps.find-compartment-id.outputs.result }} \
+            --image $IMAGE \
+            --subnet-id $SUBNET_ID \
+            --shape $SHAPE \
+            --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
+            --assign-public-ip true \
+            --environment-variables "[\
+              {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
+              {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
+              {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
+            ]"
+               
