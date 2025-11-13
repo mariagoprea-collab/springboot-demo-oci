@@ -61,7 +61,7 @@ jobs:
       uses: oracle-actions/run-oci-cli-command@v1.3.2
       with:
         command: |
-          oci container instance create \
+          oci --debug container instance create \
             --display-name $CONTAINER_NAME \
             --compartment-id ${{ steps.find-compartment-id.outputs.result }} \
             --image $IMAGE \
