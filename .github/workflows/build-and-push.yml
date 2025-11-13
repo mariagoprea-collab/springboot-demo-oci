@@ -45,20 +45,9 @@ jobs:
 
   deploy-container:
     runs-on: ubuntu-latest
-
     steps:
+      - uses: actions/checkout@v2
 
-      # Set up OCI CLI using action
-      - name: Set up OCI CLI
-        uses: oracle-actions/run-oci-cli-command@v1.3.2
-        with:
-          oci_cli_user: ${{ secrets.OCI_CLI_USER }}
-          oci_cli_tenancy: ${{ secrets.OCI_CLI_TENANCY }}
-          oci_cli_fingerprint: ${{ secrets.OCI_CLI_FINGERPRINT }}
-          oci_cli_key_content: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-          oci_cli_region: ${{ secrets.OCI_CLI_REGION }}
-
-      # Run OCI CLI Command to Deploy a Container Instance
       - name: Deploy container instance using OCI CLI
         uses: oracle-actions/run-oci-cli-command@v1.3.2
         with:
@@ -70,9 +59,10 @@ jobs:
               --subnet-id ${{ secrets.OCI_SUBNET_OCID }} \
               --shape VM.Standard.E2.1 \
               --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
-              --assign-public-ip true \
-              --environment-variables "[\
-                {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
-                {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
-                {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
-              ]"
+              --assign-public-ip true
+        env:
+          OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
+          OCI_CLI_REGION: ${{ secrets.OCI_REGION }}
