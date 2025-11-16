@@ -1,13 +1,12 @@
-name: Build and Push to OCIR
+name: Build and Deploy to OCI Container Instances
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    name: Get OCIR Repository Test
     env:
       OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
       OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
@@ -17,70 +16,79 @@ jobs:
       SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
       SHAPE: VM.Standard.E2.1
       CONTAINER_NAME: demo-app
+      CONTAINER_CONFIG_NAME: demo-app-config
       NAMESPACE: frwunln9uqph
       OCI_REGION: fra
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v3
-      with:
-        distribution: 'temurin'
-        java-version: 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 17
 
-    - name: Log into OCIR
-      uses: oracle-actions/login-ocir@v1.3.0
-      id: login-ocir
-      with:
-        auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
+      - name: Log into OCIR
+        uses: oracle-actions/login-ocir@v1.3.0
+        with:
+          auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
 
-    - name: Build JAR with Maven
-      run: mvn clean package -DskipTests
+      - name: Build JAR with Maven
+        run: mvn clean package -DskipTests
 
-    - name: Build and push Docker image
-      run: |
-        # Use the 'image' output from the previous step
-        IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
-        echo "Building Docker image $IMAGE"
-        echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-        docker build -t $IMAGE .
-        docker push $IMAGE
+      - name: Build and push Docker image
+        run: |
+          IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          docker build -t $IMAGE .
+          docker push $IMAGE
 
-    - name: Retrieve the OCID of a named compartment in tenancy
-      uses: oracle-actions/run-oci-cli-command@v1.3.2
-      id: find-compartment-id
-      with:
-        command: 'iam compartment list --compartment-id-in-subtree=true'
-        query: "data[?name=='root'].id"
+      - name: Create Container Configuration
+        shell: bash
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+          OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+        run: |
+          set -e
+          CONTAINER_CONFIG_ID=$(oci container-instances container-configuration create \
+            --display-name $CONTAINER_CONFIG_NAME \
+            --compartment-id $OCI_CLI_TENANCY \
+            --containers "[
+              {
+                \"name\": \"$CONTAINER_NAME\",
+                \"image\": \"$IMAGE\",
+                \"resources\": {\"memory-in-mbs\":1024, \"cpu-core-count\":1},
+                \"ports\": [{\"port\":8080, \"protocol\":\"TCP\"}],
+                \"environment-variables\": [
+                  {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:***ql://***:5432/***\"},
+                  {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"***\"},
+                  {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"***\"}
+                ]
+              }
+            ]" \
+            --query 'data.id' --raw-output)
+          echo "CONTAINER_CONFIG_ID=$CONTAINER_CONFIG_ID" >> $GITHUB_ENV
 
-    - name: Checkout repository
-      uses: actions/checkout@v2
-
-    - name: Create Container Instance with image
-      shell: bash
-      env:
-        IMAGE: ${{ env.IMAGE }}
-        SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
-        OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-        OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-        OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
-        OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-        OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
-      run: |
-        set -x
-        oci --debug container-instances container-instance create \
-          --display-name "$CONTAINER_NAME" \
-          --compartment-id "$OCI_CLI_TENANCY" \
-          --image "$IMAGE" \
-          --subnet-id "$SUBNET_ID" \
-          --shape "$SHAPE" \
-          --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
-          --assign-public-ip true \
-          --environment-variables "[
-            {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:***ql://***:5432/***\"},
-            {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"***\"},
-            {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"***\"}
-          ]" \
-          --output json
-  
+      - name: Create Container Instance
+        shell: bash
+        env:
+          SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
+          SHAPE: ${{ env.SHAPE }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+          CONTAINER_CONFIG_ID: ${{ env.CONTAINER_CONFIG_ID }}
+        run: |
+          set -e
+          oci container-instances container-instance create \
+            --display-name $CONTAINER_NAME \
+            --compartment-id $OCI_CLI_TENANCY \
+            --subnet-id $SUBNET_ID \
+            --shape $SHAPE \
+            --container-configuration-id $CONTAINER_CONFIG_ID \
+            --assign-public-ip true \
+            --output json
