@@ -93,38 +93,38 @@ jobs:
             ]
           }
         ]
-EOF
+        EOF
 
-        cat > vnics.json <<EOF
-        [
-          {
-            "subnetId": "$SUBNET_ID",
-            "assignPublicIp": true
-          }
-        ]
-EOF
+                cat > vnics.json <<EOF
+                [
+                  {
+                    "subnetId": "$SUBNET_ID",
+                    "assignPublicIp": true
+                  }
+                ]
+        EOF
 
-        cat > shape-config.json <<EOF
-        {
-          "ocpus": 1,
-          "memoryInGBs": 2
-        }
-EOF
+                cat > shape-config.json <<EOF
+                {
+                  "ocpus": 1,
+                  "memoryInGBs": 2
+                }
+        EOF
 
-        # Create container instance with proper OCI CLI syntax
-        oci container-instances container-instance create \
-          --availability-domain "$AVAILABILITY_DOMAIN" \
-          --compartment-id "$COMPARTMENT_ID" \
-          --display-name "$CONTAINER_NAME" \
-          --shape "$SHAPE" \
-          --shape-config file://shape-config.json \
-          --containers file://containers.json \
-          --vnics file://vnics.json \
-          --output json \
-          1>oci_stdout.log 2>oci_stderr.log
+                # Create container instance with proper OCI CLI syntax
+                oci container-instances container-instance create \
+                  --availability-domain "$AVAILABILITY_DOMAIN" \
+                  --compartment-id "$COMPARTMENT_ID" \
+                  --display-name "$CONTAINER_NAME" \
+                  --shape "$SHAPE" \
+                  --shape-config file://shape-config.json \
+                  --containers file://containers.json \
+                  --vnics file://vnics.json \
+                  --output json \
+                  1>oci_stdout.log 2>oci_stderr.log
 
-        echo "=============== STDOUT ==============="
-        cat oci_stdout.log
-        echo "=============== STDERR ==============="
-        cat oci_stderr.log
+                echo "=============== STDOUT ==============="
+                cat oci_stdout.log
+                echo "=============== STDERR ==============="
+                cat oci_stderr.log
 
