@@ -69,24 +69,17 @@ jobs:
         OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
       run: |
         set -x
-        oci --debug container instance create \
-          --display-name "$CONTAINER_NAME" \
-          --compartment-id "$OCI_CLI_TENANCY" \
-          --image "$IMAGE" \
-          --subnet-id "$SUBNET_ID" \
-          --shape "$SHAPE" \
-          --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
-          --assign-public-ip true \
-          --environment-variables "[\
-            {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
-            {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
-            {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
-          ]" \
-          --output json \
-          1>oci_stdout.log 2>oci_stderr.log || true
-        
-        echo "=============== OCI STDERR ==============="
-        cat oci_stderr.log || true
-      
-        echo "=============== OCI STDOUT ==============="
-        cat oci_stdout.log || true
+        oci --debug container-instances container-instance create \
+        --display-name "$CONTAINER_NAME" \
+        --compartment-id "$OCI_CLI_TENANCY" \
+        --image "$IMAGE" \
+        --subnet-id "$SUBNET_ID" \
+        --shape "$SHAPE" \
+        --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
+        --assign-public-ip true \
+        --environment-variables '[
+        {"name":"SPRING_DATASOURCE_URL","value":"jdbc:***ql://***:5432/***"},
+        {"name":"SPRING_DATASOURCE_USERNAME","value":"***"},
+        {"name":"SPRING_DATASOURCE_PASSWORD","value":"***"}
+      ]' \
+        --output json
