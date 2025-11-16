@@ -62,16 +62,20 @@ jobs:
       uses: oracle-actions/run-oci-cli-command@v1.3.2
       with:
         command: |
+          set -o pipefail
           oci --debug container instance create \
-            --display-name $CONTAINER_NAME \
-            --compartment-id ${{ secrets.OCI_CLI_TENANCY }} \
-            --image $IMAGE \
-            --subnet-id $SUBNET_ID \
-            --shape $SHAPE \
+            --display-name "$CONTAINER_NAME" \
+            --compartment-id "${{ secrets.OCI_CLI_TENANCY }}" \
+            --image "${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest" \
+            --subnet-id "$SUBNET_ID" \
+            --shape "$SHAPE" \
             --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
             --assign-public-ip true \
             --environment-variables "[\
               {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
               {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
               {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
-            ]"
+            ]" \
+            --output json 2>oci_error.log | tee oci_output.log
+          cat oci_error.log
+
