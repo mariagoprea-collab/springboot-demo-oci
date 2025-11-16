@@ -112,19 +112,22 @@ jobs:
         EOF
 
                 # Create container instance with proper OCI CLI syntax
-                oci container-instances container-instance create \
-                  --availability-domain "$AVAILABILITY_DOMAIN" \
-                  --compartment-id "$COMPARTMENT_ID" \
-                  --display-name "$CONTAINER_NAME" \
-                  --shape "$SHAPE" \
-                  --shape-config file://shape-config.json \
-                  --containers file://containers.json \
-                  --vnics file://vnics.json \
-                  --output json \
-                  1>oci_stdout.log 2>oci_stderr.log
+        set +e
+        oci container-instances container-instance create \
+          --availability-domain "$AVAILABILITY_DOMAIN" \
+          --compartment-id "$COMPARTMENT_ID" \
+          --display-name "$CONTAINER_NAME" \
+          --shape "$SHAPE" \
+          --shape-config file://shape-config.json \
+          --containers file://containers.json \
+          --vnics file://vnics.json \
+          --output json \
+          1>oci_stdout.log 2>oci_stderr.log
+        OCI_RC=$?
 
-                echo "=============== STDOUT ==============="
-                cat oci_stdout.log
-                echo "=============== STDERR ==============="
-                cat oci_stderr.log
+        echo "=============== STDOUT ==============="
+        cat oci_stdout.log || true
+        echo "=============== STDERR ==============="
+        cat oci_stderr.log || true
 
+        exit $OCI_RC
