@@ -63,8 +63,16 @@ jobs:
         python3 -m pip install --user oci-cli
         export PATH="$PATH:$HOME/.local/bin"
         
+        # Discover availability domain
+        AVAILABILITY_DOMAIN=$(oci iam availability-domain list \
+          --compartment-id "$COMPARTMENT_ID" \
+          --query 'data[0].name' \
+          --raw-output)
+        echo "Using availability domain: $AVAILABILITY_DOMAIN"
+        
         # Create container instance with proper OCI CLI syntax
         oci container-instances container-instance create \
+          --availability-domain "$AVAILABILITY_DOMAIN" \
           --compartment-id "$COMPARTMENT_ID" \
           --display-name "$CONTAINER_NAME" \
           --shape "$SHAPE" \
