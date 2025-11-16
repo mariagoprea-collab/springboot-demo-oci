@@ -23,6 +23,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Install OCI CLI
+        run: |
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh | bash -s -- --accept-all-defaults
+          echo "$HOME/bin" >> $GITHUB_PATH
+
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
@@ -65,9 +70,9 @@ jobs:
                 \"resources\": {\"memory-in-mbs\":1024, \"cpu-core-count\":1},
                 \"ports\": [{\"port\":8080, \"protocol\":\"TCP\"}],
                 \"environment-variables\": [
-                  {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:***ql://***:5432/***\"},
-                  {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"***\"},
-                  {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"***\"}
+                  {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"${{ secrets.DB_URL }}\"},
+                  {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},
+                  {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}
                 ]
               }
             ]" \
