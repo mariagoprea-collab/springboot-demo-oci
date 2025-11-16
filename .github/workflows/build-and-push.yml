@@ -58,6 +58,10 @@ jobs:
         OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
         OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
         OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+        DB_HOST: ${{ secrets.DB_HOST }}
+        DB_NAME: ${{ secrets.DB_NAME }}
+        DB_USER: ${{ secrets.DB_USER }}
+        DB_PASS: ${{ secrets.DB_PASS }}
       run: |
         set -x
         python3 -m pip install --user oci-cli
@@ -76,23 +80,10 @@ jobs:
           --compartment-id "$COMPARTMENT_ID" \
           --display-name "$CONTAINER_NAME" \
           --shape "$SHAPE" \
-          --containers '[{
-            "displayName": "'$CONTAINER_NAME'",
-            "imageUrl": "'$IMAGE'",
-            "portMappings": [{
-              "containerPort": 8080,
-              "protocol": "TCP"
-            }],
-            "environmentVariables": [
-              {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://'${{ secrets.DB_HOST }}':5432/'${{ secrets.DB_NAME }}'"},
-              {"name": "SPRING_DATASOURCE_USERNAME", "value": "'${{ secrets.DB_USER }}'"},
-              {"name": "SPRING_DATASOURCE_PASSWORD", "value": "'${{ secrets.DB_PASS }}'"}
-            ]
-          }]' \
-          --vnics '[{
-            "subnetId": "'$SUBNET_ID'",
-            "assignPublicIp": true
-          }]' \
+          --shape-config '{"ocpus": 1, "memoryInGBs": 2}' \
+          --containers '[
+            {
+              "displayName": "'
           --output json \
           1>oci_stdout.log 2>oci_stderr.log
         
