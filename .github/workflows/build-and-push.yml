@@ -66,27 +66,63 @@ jobs:
         set -x
         python3 -m pip install --user oci-cli
         export PATH="$PATH:$HOME/.local/bin"
-        
+
         # Discover availability domain
         AVAILABILITY_DOMAIN=$(oci iam availability-domain list \
           --compartment-id "$COMPARTMENT_ID" \
           --query 'data[0].name' \
           --raw-output)
         echo "Using availability domain: $AVAILABILITY_DOMAIN"
-        
+
+        # Build JSON payloads for containers, vnics, and shape-config
+        cat > containers.json <<EOF
+[
+  {
+    "displayName": "$CONTAINER_NAME",
+    "imageUrl": "$IMAGE",
+    "environmentVariables": {
+      "SPRING_DATASOURCE_URL": "jdbc:postgresql://$DB_HOST:5432/$DB_NAME",
+      "SPRING_DATASOURCE_USERNAME": "$DB_USER",
+      "SPRING_DATASOURCE_PASSWORD": "$DB_PASS"
+    },
+    "portMappings": [
+      {
+        "containerPort": 8080,
+        "protocol": "TCP"
+      }
+    ]
+  }
+]
+EOF
+
+        cat > vnics.json <<EOF
+[
+  {
+    "subnetId": "$SUBNET_ID",
+    "assignPublicIp": true
+  }
+]
+EOF
+
+        cat > shape-config.json <<EOF
+{
+  "ocpus": 1,
+  "memoryInGBs": 2
+}
+EOF
+
         # Create container instance with proper OCI CLI syntax
         oci container-instances container-instance create \
           --availability-domain "$AVAILABILITY_DOMAIN" \
           --compartment-id "$COMPARTMENT_ID" \
           --display-name "$CONTAINER_NAME" \
           --shape "$SHAPE" \
-          --shape-config '{"ocpus": 1, "memoryInGBs": 2}' \
-          --containers '[
-            {
-              "displayName": "'
+          --shape-config file://shape-config.json \
+          --containers file://containers.json \
+          --vnics file://vnics.json \
           --output json \
           1>oci_stdout.log 2>oci_stderr.log
-        
+
         echo "=============== STDOUT ==============="
         cat oci_stdout.log
         echo "=============== STDERR ==============="
