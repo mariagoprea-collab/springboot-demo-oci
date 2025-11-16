@@ -57,32 +57,34 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Create Container Instance with image
+      shell: bash
       env:
         IMAGE: ${{ env.IMAGE }}
-      uses: oracle-actions/run-oci-cli-command@v1.3.2
-      with:
-        command: |
-          set -x
-          oci --debug container instance create \
-            --display-name "$CONTAINER_NAME" \
-            --compartment-id "${{ secrets.OCI_CLI_TENANCY }}" \
-            --image "$IMAGE" \
-            --subnet-id "$SUBNET_ID" \
-            --shape "$SHAPE" \
-            --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
-            --assign-public-ip true \
-            --environment-variables "[\
-              {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
-              {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
-              {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
-            ]" \
-            --output json \
-            1>oci_stdout.log 2>oci_stderr.log || true
-          
-          echo "=============== OCI STDERR ==============="
-          cat oci_stderr.log || true
-          
-          echo "=============== OCI STDOUT ==============="
-          cat oci_stdout.log || true
-          
-          exit 1
+        OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+        OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+        OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+        OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+        OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+      run: |
+        set -x
+        oci --debug container instance create \
+          --display-name "$CONTAINER_NAME" \
+          --compartment-id "$OCI_CLI_TENANCY" \
+          --image "$IMAGE" \
+          --subnet-id "$SUBNET_ID" \
+          --shape "$SHAPE" \
+          --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
+          --assign-public-ip true \
+          --environment-variables "[\
+            {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
+            {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
+            {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
+          ]" \
+          --output json \
+          1>oci_stdout.log 2>oci_stderr.log
+        
+        echo "=============== STDOUT ==============="
+        cat oci_stdout.log
+        echo "=============== STDERR ==============="
+        cat oci_stderr.log
+
