@@ -76,39 +76,39 @@ jobs:
 
         # Build JSON payloads for containers, vnics, and shape-config
         cat > containers.json <<EOF
-[
-  {
-    "displayName": "$CONTAINER_NAME",
-    "imageUrl": "$IMAGE",
-    "environmentVariables": {
-      "SPRING_DATASOURCE_URL": "jdbc:postgresql://$DB_HOST:5432/$DB_NAME",
-      "SPRING_DATASOURCE_USERNAME": "$DB_USER",
-      "SPRING_DATASOURCE_PASSWORD": "$DB_PASS"
-    },
-    "portMappings": [
-      {
-        "containerPort": 8080,
-        "protocol": "TCP"
-      }
-    ]
-  }
-]
+        [
+          {
+            "displayName": "$CONTAINER_NAME",
+            "imageUrl": "$IMAGE",
+            "environmentVariables": {
+              "SPRING_DATASOURCE_URL": "jdbc:postgresql://$DB_HOST:5432/$DB_NAME",
+              "SPRING_DATASOURCE_USERNAME": "$DB_USER",
+              "SPRING_DATASOURCE_PASSWORD": "$DB_PASS"
+            },
+            "portMappings": [
+              {
+                "containerPort": 8080,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
 EOF
 
         cat > vnics.json <<EOF
-[
-  {
-    "subnetId": "$SUBNET_ID",
-    "assignPublicIp": true
-  }
-]
+        [
+          {
+            "subnetId": "$SUBNET_ID",
+            "assignPublicIp": true
+          }
+        ]
 EOF
 
         cat > shape-config.json <<EOF
-{
-  "ocpus": 1,
-  "memoryInGBs": 2
-}
+        {
+          "ocpus": 1,
+          "memoryInGBs": 2
+        }
 EOF
 
         # Create container instance with proper OCI CLI syntax
