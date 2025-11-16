@@ -43,6 +43,7 @@ jobs:
         # Use the 'image' output from the previous step
         IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
         echo "Building Docker image $IMAGE"
+        echo "IMAGE=$IMAGE" >> $GITHUB_ENV
         docker build -t $IMAGE .
         docker push $IMAGE
 
@@ -60,6 +61,7 @@ jobs:
       shell: bash
       env:
         IMAGE: ${{ env.IMAGE }}
+        SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
         OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
         OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
         OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
