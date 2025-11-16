@@ -47,18 +47,12 @@ jobs:
         docker build -t $IMAGE .
         docker push $IMAGE
 
-    - name: Retrieve the OCID of a named compartment in tenancy
-      uses: oracle-actions/run-oci-cli-command@v1.3.2
-      id: find-compartment-id
-      with:
-        command: 'iam compartment list --compartment-id-in-subtree=true --query "data[?name==\''root''].id | [0]" --raw-output'
-
     - name: Create Container Instance with image
       shell: bash
       env:
         IMAGE: ${{ env.IMAGE }}
         SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
-        COMPARTMENT_ID: ${{ steps.find-compartment-id.outputs.output }}
+        COMPARTMENT_ID: ${{ secrets.OCI_CLI_TENANCY }}
         OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
         OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
         OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
