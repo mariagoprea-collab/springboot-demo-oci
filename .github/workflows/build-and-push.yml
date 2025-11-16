@@ -83,10 +83,10 @@ jobs:
             {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
           ]" \
           --output json \
-          1>oci_stdout.log 2>oci_stderr.log
+          1>oci_stdout.log 2>oci_stderr.log || true
         
-        echo "=============== STDOUT ==============="
-        cat oci_stdout.log
-        echo "=============== STDERR ==============="
-        cat oci_stderr.log
-
+        echo "=============== OCI STDERR ==============="
+        cat oci_stderr.log || true
+      
+        echo "=============== OCI STDOUT ==============="
+        cat oci_stdout.log || true
