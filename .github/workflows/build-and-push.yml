@@ -70,16 +70,17 @@ jobs:
       run: |
         set -x
         oci --debug container-instances container-instance create \
-        --display-name "$CONTAINER_NAME" \
-        --compartment-id "$OCI_CLI_TENANCY" \
-        --image "$IMAGE" \
-        --subnet-id "$SUBNET_ID" \
-        --shape "$SHAPE" \
-        --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
-        --assign-public-ip true \
-        --environment-variables '[
-        {"name":"SPRING_DATASOURCE_URL","value":"jdbc:***ql://***:5432/***"},
-        {"name":"SPRING_DATASOURCE_USERNAME","value":"***"},
-        {"name":"SPRING_DATASOURCE_PASSWORD","value":"***"}
-      ]' \
-        --output json
+          --display-name "$CONTAINER_NAME" \
+          --compartment-id "$OCI_CLI_TENANCY" \
+          --image "$IMAGE" \
+          --subnet-id "$SUBNET_ID" \
+          --shape "$SHAPE" \
+          --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
+          --assign-public-ip true \
+          --environment-variables "[
+            {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:***ql://***:5432/***\"},
+            {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"***\"},
+            {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"***\"}
+          ]" \
+          --output json
+  
