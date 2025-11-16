@@ -56,14 +56,15 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
 
-      # 3️⃣ Creează Container Instance și rulează imaginea
     - name: Create Container Instance with image
+      env:
+        IMAGE: ${{ env.IMAGE }}
       uses: oracle-actions/run-oci-cli-command@v1.3.2
       with:
         command: |
           oci --debug container instance create \
             --display-name $CONTAINER_NAME \
-            --compartment-id ${{ steps.find-compartment-id.outputs.result }} \
+            --compartment-id ${{ secrets.OCI_CLI_TENANCY }} \
             --image $IMAGE \
             --subnet-id $SUBNET_ID \
             --shape $SHAPE \
@@ -74,4 +75,3 @@ jobs:
               {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
               {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
             ]"
-               
