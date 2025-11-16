@@ -54,14 +54,12 @@ jobs:
         command: 'iam compartment list --compartment-id-in-subtree=true'
         query: "data[?name=='root'].id"
 
-    - name: Checkout repository
-      uses: actions/checkout@v2
-
     - name: Create Container Instance with image
       shell: bash
       env:
         IMAGE: ${{ env.IMAGE }}
         SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
+        COMPARTMENT_ID: ${{ steps.find-compartment-id.outputs.output }}
         OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
         OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
         OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
@@ -69,19 +67,29 @@ jobs:
         OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
       run: |
         set -x
-        oci --debug container instance create \
+        
+        # Create container instance with proper OCI CLI syntax
+        oci container-instances container-instance create \
+          --compartment-id "$COMPARTMENT_ID" \
           --display-name "$CONTAINER_NAME" \
-          --compartment-id "$OCI_CLI_TENANCY" \
-          --image "$IMAGE" \
-          --subnet-id "$SUBNET_ID" \
           --shape "$SHAPE" \
-          --port-mappings '[{"containerPort":8080,"protocol":"TCP"}]' \
-          --assign-public-ip true \
-          --environment-variables "[\
-            {\"name\":\"SPRING_DATASOURCE_URL\",\"value\":\"jdbc:postgresql://${{ secrets.DB_HOST }}:5432/${{ secrets.DB_NAME }}\"},\
-            {\"name\":\"SPRING_DATASOURCE_USERNAME\",\"value\":\"${{ secrets.DB_USER }}\"},\
-            {\"name\":\"SPRING_DATASOURCE_PASSWORD\",\"value\":\"${{ secrets.DB_PASS }}\"}\
-          ]" \
+          --containers '[{
+            "displayName": "'$CONTAINER_NAME'",
+            "imageUrl": "'$IMAGE'",
+            "portMappings": [{
+              "containerPort": 8080,
+              "protocol": "TCP"
+            }],
+            "environmentVariables": [
+              {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://'${{ secrets.DB_HOST }}':5432/'${{ secrets.DB_NAME }}'"},
+              {"name": "SPRING_DATASOURCE_USERNAME", "value": "'${{ secrets.DB_USER }}'"},
+              {"name": "SPRING_DATASOURCE_PASSWORD", "value": "'${{ secrets.DB_PASS }}'"}
+            ]
+          }]' \
+          --vnics '[{
+            "subnetId": "'$SUBNET_ID'",
+            "assignPublicIp": true
+          }]' \
           --output json \
           1>oci_stdout.log 2>oci_stderr.log
         
