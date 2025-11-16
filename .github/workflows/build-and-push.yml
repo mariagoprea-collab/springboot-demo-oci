@@ -60,6 +60,8 @@ jobs:
         OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
       run: |
         set -x
+        python3 -m pip install --user oci-cli
+        export PATH="$PATH:$HOME/.local/bin"
         
         # Create container instance with proper OCI CLI syntax
         oci container-instances container-instance create \
