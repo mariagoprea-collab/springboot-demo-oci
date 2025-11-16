@@ -15,7 +15,7 @@ jobs:
       OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
       OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
       SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
-      SHAPE: CI.Standard.A1.Flex
+      SHAPE: VM.Standard.E5.Flex
       CONTAINER_NAME: demo-app
       NAMESPACE: frwunln9uqph
       OCI_REGION: fra
