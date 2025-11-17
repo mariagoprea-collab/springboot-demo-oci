@@ -17,7 +17,7 @@ jobs:
       SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
       SHAPE: VM.Standard.E5.Flex
       CONTAINER_NAME: demo-app
-      NAMESPACE: frwunln9uqph
+      NAMESPACE: frnhkcj2u67r
       OCI_REGION: fra
     steps:
     - name: Checkout code
