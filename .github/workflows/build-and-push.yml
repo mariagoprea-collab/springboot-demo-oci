@@ -52,7 +52,7 @@ jobs:
       env:
         IMAGE: ${{ env.IMAGE }}
         SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
-        COMPARTMENT_ID: ${{ secrets.OCI_CLI_TENANCY }}
+        COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
         OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
         OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
         OCI_CLI_REGION: fra
