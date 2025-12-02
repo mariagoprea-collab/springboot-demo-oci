@@ -55,7 +55,7 @@ jobs:
         COMPARTMENT_ID: ${{ secrets.OCI_CLI_TENANCY }}
         OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
         OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-        OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+        OCI_CLI_REGION: fra
         OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
         OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
         DB_HOST: ${{ secrets.DB_HOST }}
