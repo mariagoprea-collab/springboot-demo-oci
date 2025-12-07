@@ -59,6 +59,7 @@ jobs:
         OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
         OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
         DB_HOST: 10.0.1.99
+        SERVER_ADDRESS: 0.0.0.0
         DB_NAME: postgres
         DB_USER: ${{ secrets.DB_USER }}
         DB_PASS: ${{ secrets.DB_PASS }}
@@ -83,7 +84,8 @@ jobs:
             "environmentVariables": {
               "SPRING_DATASOURCE_URL": "jdbc:postgresql://$DB_HOST:5432/$DB_NAME",
               "SPRING_DATASOURCE_USERNAME": "$DB_USER",
-              "SPRING_DATASOURCE_PASSWORD": "$DB_PASS"
+              "SPRING_DATASOURCE_PASSWORD": "$DB_PASS",
+              "SPRING_SERVER_ADDRESS": "0.0.0.0"
             },
             "portMappings": [
               {
