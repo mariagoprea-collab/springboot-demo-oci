@@ -14,7 +14,7 @@ jobs:
       OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
       OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
       OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
-      SUBNET_ID: ${{ secrets.OCI_SUBNET_OCID }}
+      SUBNET_ID: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaadfimsqrj4u2zqnky6iprdfboyhfnqbiuc3p6yll3efhwz6i3zvpq
       SHAPE: CI.Standard.E4.Flex
       CONTAINER_NAME: demo-app
       NAMESPACE: frnhkcj2u67r
