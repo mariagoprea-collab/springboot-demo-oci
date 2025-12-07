@@ -59,7 +59,7 @@ jobs:
         OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
         OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
         DB_HOST: 10.0.1.99
-        DB_NAME: ${{ secrets.DB_NAME }}
+        DB_NAME: postgres
         DB_USER: ${{ secrets.DB_USER }}
         DB_PASS: ${{ secrets.DB_PASS }}
       run: |
