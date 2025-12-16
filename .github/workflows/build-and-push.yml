@@ -1,4 +1,4 @@
-name: Build and Push to OCIR
+name: Build, Push and Run Spring Boot on OCI
 
 on:
   push:
@@ -40,7 +40,7 @@ jobs:
 
     - name: Build and push Docker image
       run: |
-        # Use the 'image' output from the previous step
+        # Build Docker image and push to OCIR
         IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
         echo "Building Docker image $IMAGE"
         echo "IMAGE=$IMAGE" >> $GITHUB_ENV
