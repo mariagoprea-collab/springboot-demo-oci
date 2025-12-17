@@ -23,124 +23,117 @@ jobs:
       DB_NAME: postgres
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASS: ${{ secrets.DB_PASS }}
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v3
-      with:
-        distribution: 'temurin'
-        java-version: 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 17
 
-    - name: Log into OCIR
-      uses: oracle-actions/login-ocir@v1.3.0
-      id: login-ocir
-      with:
-        auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
+      - name: Log into OCIR
+        uses: oracle-actions/login-ocir@v1.3.0
+        id: login-ocir
+        with:
+          auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
 
-    - name: Docker login to OCIR
-      run: |
-        echo "${{ steps.login-ocir.outputs.password }}" | docker login \
-          ${{ steps.login-ocir.outputs.registry }} \
-          -u "${{ steps.login-ocir.outputs.username }}" --password-stdin
+      - name: Build JAR with Maven
+        run: mvn clean package -DskipTests
 
-    - name: Build JAR with Maven
-      run: mvn clean package -DskipTests
+      - name: Build and push Docker image
+        run: |
+          # Use the 'image' output from the previous step
+          IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
+          echo "Building Docker image $IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          docker build -t $IMAGE .
+          docker push $IMAGE
 
-    - name: Build and push Docker image
-      run: |
-        # Use the 'image' output from the previous step
-        IMAGE=${{ env.OCI_CLI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
-        echo "Building Docker image $IMAGE"
-        echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-        docker build -t $IMAGE .
-        docker push $IMAGE
-
-    - name: Create Container Instance with image
-      shell: bash
-      env:
-        IMAGE: ${{ env.IMAGE }}
-        CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
-        SUBNET_ID: ${{ env.SUBNET_ID }}
-        COMPARTMENT_ID: ${{ env.COMPARTMENT_ID }}
-        OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-        OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-        OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-        OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
-        DB_HOST: 10.0.1.99
-        SERVER_ADDRESS: 0.0.0.0
-        DB_NAME: postgres
-        DB_USER: ${{ secrets.DB_USER }}
-        DB_PASS: ${{ secrets.DB_PASS }}
-      run: |
-        set -x
-        python3 -m pip install --user oci-cli
-        export PATH="$PATH:$HOME/.local/bin"
-
-        # Discover availability domain
-        AVAILABILITY_DOMAIN=$(oci iam availability-domain list \
-          --compartment-id "$COMPARTMENT_ID" \
-          --query 'data[0].name' \
-          --raw-output)
-        echo "Using availability domain: $AVAILABILITY_DOMAIN"
-
-        # Build JSON payloads for containers, vnics, and shape-config
-        cat > containers.json <<EOF
-        [
-          {
-            "displayName": "$CONTAINER_NAME",
-            "imageUrl": "$IMAGE",
-            "environmentVariables": {
-              "SPRING_DATASOURCE_URL": "jdbc:postgresql://$DB_HOST:5432/$DB_NAME",
-              "SPRING_DATASOURCE_USERNAME": "$DB_USER",
-              "SPRING_DATASOURCE_PASSWORD": "$DB_PASS",
-              "SPRING_SERVER_ADDRESS": "0.0.0.0"
-            },
-            "portMappings": [
-              {
-                "containerPort": 8080,
-                "protocol": "TCP"
-              }
-            ]
-          }
-        ]
-        EOF
-
-                cat > vnics.json <<EOF
-                [
-                  {
-                    "subnetId": "$SUBNET_ID",
-                    "assignPublicIp": true
-                  }
-                ]
-        EOF
-
-                cat > shape-config.json <<EOF
+      - name: Create Container Instance with image
+        shell: bash
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          SUBNET_ID: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaadfimsqrj4u2zqnky6iprdfboyhfnqbiuc3p6yll3efhwz6i3zvpq
+          COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
+          OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+          OCI_CLI_REGION: fra
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+          DB_HOST: 10.0.1.99
+          SERVER_ADDRESS: 0.0.0.0
+          DB_NAME: postgres
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+        run: |
+          set -x
+          python3 -m pip install --user oci-cli
+          export PATH="$PATH:$HOME/.local/bin"
+          
+          # Discover availability domain
+          AVAILABILITY_DOMAIN=$(oci iam availability-domain list \
+            --compartment-id "$COMPARTMENT_ID" \
+            --query 'data[0].name' \
+            --raw-output)
+          echo "Using availability domain: $AVAILABILITY_DOMAIN"
+          
+          # Build JSON payloads for containers, vnics, and shape-config
+          cat > containers.json <<EOF
+          [
+            {
+              "displayName": "$CONTAINER_NAME",
+              "imageUrl": "$IMAGE",
+              "environmentVariables": {
+                "SPRING_DATASOURCE_URL": "jdbc:postgresql://$DB_HOST:5432/$DB_NAME",
+                "SPRING_DATASOURCE_USERNAME": "$DB_USER",
+                "SPRING_DATASOURCE_PASSWORD": "$DB_PASS",
+                "SPRING_SERVER_ADDRESS": "0.0.0.0"
+              },
+              "portMappings": [
                 {
-                  "ocpus": 1,
-                  "memoryInGBs": 2
+                  "containerPort": 8080,
+                  "protocol": "TCP"
                 }
-        EOF
-
-                # Create container instance with proper OCI CLI syntax
-        set +e
-        oci container-instances container-instance create \
-          --availability-domain "$AVAILABILITY_DOMAIN" \
-          --compartment-id "$COMPARTMENT_ID" \
-          --display-name "$CONTAINER_NAME" \
-          --shape "$SHAPE" \
-          --shape-config file://shape-config.json \
-          --containers file://containers.json \
-          --vnics file://vnics.json \
-          --output json \
-          1>oci_stdout.log 2>oci_stderr.log
-        OCI_RC=$?
-
-        echo "=============== STDOUT ==============="
-        cat oci_stdout.log || true
-        echo "=============== STDERR ==============="
-        cat oci_stderr.log || true
-
-        exit $OCI_RC
+              ]
+            }
+          ]
+          EOF
+          
+                  cat > vnics.json <<EOF
+                  [
+                    {
+                      "subnetId": "$SUBNET_ID",
+                      "assignPublicIp": true
+                    }
+                  ]
+          EOF
+          
+                  cat > shape-config.json <<EOF
+                  {
+                    "ocpus": 1,
+                    "memoryInGBs": 2
+                  }
+          EOF
+          
+                  # Create container instance with proper OCI CLI syntax
+          set +e
+          oci container-instances container-instance create \
+            --availability-domain "$AVAILABILITY_DOMAIN" \
+            --compartment-id "$COMPARTMENT_ID" \
+            --display-name "$CONTAINER_NAME" \
+            --shape "$SHAPE" \
+            --shape-config file://shape-config.json \
+            --containers file://containers.json \
+            --vnics file://vnics.json \
+            --output json \
+            1>oci_stdout.log 2>oci_stderr.log
+          OCI_RC=$?
+          
+          echo "=============== STDOUT ==============="
+          cat oci_stdout.log || true
+          echo "=============== STDERR ==============="
+          cat oci_stderr.log || true
+          
+          exit $OCI_RC
