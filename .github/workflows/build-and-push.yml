@@ -45,7 +45,7 @@ jobs:
       - name: Build and push Docker image
         run: |
           # Use the 'image' output from the previous step
-          IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
+          IMAGE=${{ env.OCI_CLI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
           echo "Building Docker image $IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
           docker build -t $IMAGE .
