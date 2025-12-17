@@ -31,11 +31,9 @@ jobs:
 
       - name: Log into OCIR
         uses: oracle-actions/login-ocir@v1.3.0
+        id: login-ocir
         with:
-          tenancy: ${{ secrets.OCI_TENANCY_NAME }}
-          user: ${{ secrets.OCI_USERNAME }}
           auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
-          region: fr${{ secrets.OCIR_REGION_KEY }}
 
       - name: Build JAR with Maven
         run: mvn clean package -DskipTests
@@ -53,6 +51,7 @@ jobs:
         shell: bash
         env:
           IMAGE: ${{ env.IMAGE }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
           COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
           DB_HOST: 10.0.1.99
           SERVER_ADDRESS: 0.0.0.0
