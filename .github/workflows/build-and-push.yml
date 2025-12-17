@@ -18,7 +18,7 @@ jobs:
       SHAPE: CI.Standard.E4.Flex
       CONTAINER_NAME: demo-app
       NAMESPACE: frnhkcj2u67r
-      OCI_REGION: fra
+      OCIR_REGION_KEY: fra
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -41,7 +41,7 @@ jobs:
       - name: Build and push Docker image
         run: |
           # Build Docker image and push to OCIR
-          IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
+          IMAGE=${{ env.OCIR_REGION_KEY }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
           echo "Building Docker image $IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
           docker build -t $IMAGE .
