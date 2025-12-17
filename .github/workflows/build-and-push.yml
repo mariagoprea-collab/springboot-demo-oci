@@ -70,7 +70,18 @@ jobs:
             --raw-output)
           echo "Using availability domain: $AVAILABILITY_DOMAIN"
           
-          # Build JSON payloads for containers, vnics, and shape-config
+          EXISTING_ID=$(oci container-instances container-instance list \
+            --compartment-id "$COMPARTMENT_ID" \
+            --query "data[?display-name=='$CONTAINER_NAME'].id | [0]" \
+            --raw-output)
+  
+          if [ "$EXISTING_ID" != "null" ]; then
+            oci container-instances container-instance delete \
+              --container-instance-id "$EXISTING_ID" \
+              --force
+          fi
+  
+  # Build JSON payloads for containers, vnics, and shape-config
           cat > containers.json <<EOF
           [
             {
