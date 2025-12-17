@@ -1,4 +1,4 @@
-name: Build, Push and Run Spring Boot on OCI
+name: Build, Push and Run Spring Boot on Oracle Cloud Infra
 
 on:
   push:
