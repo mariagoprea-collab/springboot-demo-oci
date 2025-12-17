@@ -1,4 +1,4 @@
-name: Build, Push and Run Spring Boot on OCI
+name: Build and Push to OCIR
 
 on:
   push:
@@ -18,7 +18,12 @@ jobs:
       SHAPE: CI.Standard.E4.Flex
       CONTAINER_NAME: demo-app
       NAMESPACE: frnhkcj2u67r
-      OCI_REGION: fra
+      COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
+      DB_HOST: 10.0.1.99
+      DB_NAME: postgres
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASS: ${{ secrets.DB_PASS }}
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -40,8 +45,8 @@ jobs:
 
     - name: Build and push Docker image
       run: |
-        # Build Docker image and push to OCIR
-        IMAGE=${{ env.OCI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
+        # Use the 'image' output from the previous step
+        IMAGE=${{ env.OCI_CLI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
         echo "Building Docker image $IMAGE"
         echo "IMAGE=$IMAGE" >> $GITHUB_ENV
         docker build -t $IMAGE .
@@ -51,11 +56,11 @@ jobs:
       shell: bash
       env:
         IMAGE: ${{ env.IMAGE }}
-        SUBNET_ID: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaadfimsqrj4u2zqnky6iprdfboyhfnqbiuc3p6yll3efhwz6i3zvpq
-        COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
+        CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+        SUBNET_ID: ${{ env.SUBNET_ID }}
+        COMPARTMENT_ID: ${{ env.COMPARTMENT_ID }}
         OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
         OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-        OCI_CLI_REGION: fra
         OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
         OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
         DB_HOST: 10.0.1.99
