@@ -70,7 +70,20 @@ jobs:
             --raw-output)
           echo "Using availability domain: $AVAILABILITY_DOMAIN"
           
+          # Check if instance exists and delete
+          EXISTING_ID=$(oci container-instances container-instance list \
+            --compartment-id "$COMPARTMENT_ID" \
+            --query "data[?display-name=='$CONTAINER_NAME'].id | [0]" \
+            --raw-output)
           
+          if [ "$EXISTING_ID" != "null" ] && [ -n "$EXISTING_ID" ]; then
+            echo "Deleting existing container instance: $EXISTING_ID"
+            oci container-instances container-instance delete \
+              --container-instance-id "$EXISTING_ID" \
+              --force
+          else
+            echo "No existing container instance found"
+          fi
           # Build JSON payloads for containers, vnics, and shape-config
           cat > containers.json <<EOF
           [
