@@ -40,6 +40,12 @@ jobs:
       with:
         auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
 
+    - name: Docker login to OCIR
+      run: |
+        echo "${{ steps.login-ocir.outputs.password }}" | docker login \
+          ${{ steps.login-ocir.outputs.registry }} \
+          -u "${{ steps.login-ocir.outputs.username }}" --password-stdin
+
     - name: Build JAR with Maven
       run: mvn clean package -DskipTests
 
