@@ -69,8 +69,9 @@ jobs:
             --query 'data[0].name' \
             --raw-output)
           echo "Using availability domain: $AVAILABILITY_DOMAIN"
-
-  # Build JSON payloads for containers, vnics, and shape-config
+          
+          
+          # Build JSON payloads for containers, vnics, and shape-config
           cat > containers.json <<EOF
           [
             {
@@ -110,7 +111,6 @@ jobs:
           
                   # Create container instance with proper OCI CLI syntax
           set +e
-              
           oci container-instances container-instance create \
             --availability-domain "$AVAILABILITY_DOMAIN" \
             --compartment-id "$COMPARTMENT_ID" \
