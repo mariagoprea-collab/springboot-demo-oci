@@ -7,18 +7,26 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    name: Get OCIR Repository Test
+    name: Build → OCIR → Container Instance
     env:
       OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
       OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
       OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
       OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
       OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
+
+      OCI_TENANCY_NAME: ${{ secrets.OCI_TENANCY_NAME }}
+      OCI_USERNAME: ${{ secrets.OCI_USERNAME }}
+
       SUBNET_ID: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaadfimsqrj4u2zqnky6iprdfboyhfnqbiuc3p6yll3efhwz6i3zvpq
+      COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
+
       SHAPE: CI.Standard.E4.Flex
       CONTAINER_NAME: demo-app
+
       NAMESPACE: frnhkcj2u67r
       OCIR_REGION_KEY: fra
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -26,12 +34,11 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: 17
 
       - name: Log into OCIR
         uses: oracle-actions/login-ocir@v1.3.0
-        id: login-ocir
         with:
           auth_token: ${{ secrets.OCI_AUTH_TOKEN }}
 
@@ -40,38 +47,59 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          # Build Docker image and push to OCIR
-          IMAGE=${{ env.OCIR_REGION_KEY }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
-          echo "Building Docker image $IMAGE"
+          IMAGE=${{ env.OCIR_REGION_KEY }}.ocir.io/${{ env.NAMESPACE }}/demo:${{ github.sha }}
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
           docker build -t $IMAGE .
           docker push $IMAGE
 
-      - name: Create Container Instance with image
+      - name: Deploy to OCI Container Instance
         shell: bash
         env:
           IMAGE: ${{ env.IMAGE }}
-          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
-          COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
           DB_HOST: 10.0.1.99
-          SERVER_ADDRESS: 0.0.0.0
           DB_NAME: postgres
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASS: ${{ secrets.DB_PASS }}
         run: |
-          set -x
+          set -euo pipefail
+
           python3 -m pip install --user oci-cli
           export PATH="$PATH:$HOME/.local/bin"
-          
-          # Discover availability domain
-          AVAILABILITY_DOMAIN=$(oci iam availability-domain list \
+
+          # OCI CLI config
+          mkdir -p ~/.oci
+          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${OCI_CLI_USER}
+          fingerprint=${OCI_CLI_FINGERPRINT}
+          tenancy=${OCI_CLI_TENANCY}
+          region=${OCI_CLI_REGION}
+          key_file=~/.oci/oci_api_key.pem
+          EOF
+
+          # Availability Domain
+          AD=$(oci iam availability-domain list \
             --compartment-id "$COMPARTMENT_ID" \
             --query 'data[0].name' \
             --raw-output)
-          echo "Using availability domain: $AVAILABILITY_DOMAIN"
-          
-          
-          # Build JSON payloads for containers, vnics, and shape-config
+
+          # Delete existing instance
+          EXISTING_ID=$(oci container-instances container-instance list \
+            --compartment-id "$COMPARTMENT_ID" \
+            --query "data[?display-name=='$CONTAINER_NAME'].id | [0]" \
+            --raw-output)
+
+          if [ "$EXISTING_ID" != "null" ] && [ -n "$EXISTING_ID" ]; then
+            oci container-instances container-instance delete \
+              --container-instance-id "$EXISTING_ID" \
+              --force
+          fi
+
+          # Containers config
           cat > containers.json <<EOF
           [
             {
@@ -80,52 +108,40 @@ jobs:
               "environmentVariables": {
                 "SPRING_DATASOURCE_URL": "jdbc:postgresql://$DB_HOST:5432/$DB_NAME",
                 "SPRING_DATASOURCE_USERNAME": "$DB_USER",
-                "SPRING_DATASOURCE_PASSWORD": "$DB_PASS",
-                "SPRING_SERVER_ADDRESS": "0.0.0.0"
+                "SPRING_DATASOURCE_PASSWORD": "$DB_PASS"
               },
               "portMappings": [
-                {
-                  "containerPort": 8080,
-                  "protocol": "TCP"
-                }
+                { "containerPort": 8080, "protocol": "TCP" }
               ]
             }
           ]
           EOF
-          
-                  cat > vnics.json <<EOF
-                  [
-                    {
-                      "subnetId": "$SUBNET_ID",
-                      "assignPublicIp": true
-                    }
-                  ]
+
+          # VNIC config
+          cat > vnics.json <<EOF
+          [
+            {
+              "subnetId": "$SUBNET_ID",
+              "assignPublicIp": true
+            }
+          ]
           EOF
-          
-                  cat > shape-config.json <<EOF
-                  {
-                    "ocpus": 1,
-                    "memoryInGBs": 2
-                  }
+
+          # Shape config
+          cat > shape-config.json <<EOF
+          {
+            "ocpus": 1,
+            "memoryInGBs": 2
+          }
           EOF
-          
-                  # Create container instance with proper OCI CLI syntax
-          set +e
+
+          # Create instance
           oci container-instances container-instance create \
-            --availability-domain "$AVAILABILITY_DOMAIN" \
+            --availability-domain "$AD" \
             --compartment-id "$COMPARTMENT_ID" \
             --display-name "$CONTAINER_NAME" \
             --shape "$SHAPE" \
             --shape-config file://shape-config.json \
             --containers file://containers.json \
             --vnics file://vnics.json \
-            --output json \
-            1>oci_stdout.log 2>oci_stderr.log
-          OCI_RC=$?
-          
-          echo "=============== STDOUT ==============="
-          cat oci_stdout.log || true
-          echo "=============== STDERR ==============="
-          cat oci_stderr.log || true
-          
-          exit $OCI_RC
+            --output json
