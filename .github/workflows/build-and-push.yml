@@ -51,12 +51,7 @@ jobs:
         shell: bash
         env:
           IMAGE: ${{ env.IMAGE }}
-          SUBNET_ID: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaadfimsqrj4u2zqnky6iprdfboyhfnqbiuc3p6yll3efhwz6i3zvpq
           COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
-          OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
-          OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
-          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
           DB_HOST: 10.0.1.99
           SERVER_ADDRESS: 0.0.0.0
           DB_NAME: postgres
