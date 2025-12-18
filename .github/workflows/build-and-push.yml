@@ -73,7 +73,7 @@ jobs:
           # Check if instance exists and delete
           EXISTING_ID=$(oci container-instances container-instance list \
             --compartment-id "$COMPARTMENT_ID" \
-            --query "data[?displayName=='$CONTAINER_NAME' && lifecycleState=='ACTIVE'].id | [0]" \
+            --query "data[?displayName=='demo-app' && lifecycle-state=='ACTIVE'].id" \
             --raw-output)
           
           if [ "$EXISTING_ID" != "null" ] && [ -n "$EXISTING_ID" ]; then
