@@ -41,9 +41,105 @@ jobs:
       - name: Build and push Docker image
         run: |
           # Build Docker image and push to OCIR
-          IMAGE=${{ env.OCIR_REGION_KEY }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
+          IMAGE=${{ env.OCI_CLI_REGION }}.ocir.io/${{ env.NAMESPACE }}/demo:latest
           echo "Building Docker image $IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
           docker build -t $IMAGE .
           docker push $IMAGE
 
+      - name: Create Container Instance with image
+        shell: bash
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
+          DB_HOST: 10.0.1.99
+          SERVER_ADDRESS: 0.0.0.0
+          DB_NAME: postgres
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+        run: |
+          set -x
+          python3 -m pip install --user oci-cli
+          export PATH="$PATH:$HOME/.local/bin"
+          
+          # Discover availability domain
+          AVAILABILITY_DOMAIN=$(oci iam availability-domain list \
+            --compartment-id "$COMPARTMENT_ID" \
+            --query 'data[0].name' \
+            --raw-output)
+          echo "Using availability domain: $AVAILABILITY_DOMAIN"
+          
+          # Check if instance exists and delete
+          EXISTING_ID=$(oci container-instances container-instance list \
+            --compartment-id "$COMPARTMENT_ID" \
+            --query "data[?displayName=='demo-app' && \"lifecycle-state\"=='Active'].id" \
+            --raw-output)
+          
+          if [ "$EXISTING_ID" != "null" ] && [ -n "$EXISTING_ID" ]; then
+            echo "Deleting existing container instance: $EXISTING_ID"
+            oci container-instances container-instance delete \
+              --container-instance-id "$EXISTING_ID" \
+              --force
+          else
+            echo "No existing container instance found"
+          fi
+          
+          # Build JSON payloads for containers, vnics, and shape-config
+          cat > containers.json <<EOF
+          [
+            {
+              "displayName": "$CONTAINER_NAME",
+              "imageUrl": "$IMAGE",
+              "environmentVariables": {
+                "SPRING_DATASOURCE_URL": "jdbc:postgresql://$DB_HOST:5432/$DB_NAME",
+                "SPRING_DATASOURCE_USERNAME": "$DB_USER",
+                "SPRING_DATASOURCE_PASSWORD": "$DB_PASS",
+                "SPRING_SERVER_ADDRESS": "0.0.0.0"
+              },
+              "portMappings": [
+                {
+                  "containerPort": 8080,
+                  "protocol": "TCP"
+                }
+              ]
+            }
+          ]
+          EOF
+          
+                  cat > vnics.json <<EOF
+                  [
+                    {
+                      "subnetId": "$SUBNET_ID",
+                      "assignPublicIp": true
+                    }
+                  ]
+          EOF
+          
+                  cat > shape-config.json <<EOF
+                  {
+                    "ocpus": 1,
+                    "memoryInGBs": 2
+                  }
+          EOF
+          
+                  # Create container instance with proper OCI CLI syntax
+          set +e
+          oci container-instances container-instance create \
+            --availability-domain "$AVAILABILITY_DOMAIN" \
+            --compartment-id "$COMPARTMENT_ID" \
+            --display-name "$CONTAINER_NAME" \
+            --shape "$SHAPE" \
+            --shape-config file://shape-config.json \
+            --containers file://containers.json \
+            --vnics file://vnics.json \
+            --output json \
+            1>oci_stdout.log 2>oci_stderr.log
+          OCI_RC=$?
+          
+          echo "=============== STDOUT ==============="
+          cat oci_stdout.log || true
+          echo "=============== STDERR ==============="
+          cat oci_stderr.log || true
+          
+          exit $OCI_RC
