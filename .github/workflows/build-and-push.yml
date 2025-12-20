@@ -4,20 +4,7 @@ on:
   push:
     branches: [fix-pipeline]
   workflow_dispatch:
-    inputs:
-      deploy_strategy:
-        description: "How to deploy: update an existing instance in-place, or replace (delete + recreate)."
-        type: choice
-        required: true
-        default: update
-        options:
-          - update
-          - replace
-      update_backend_lb_on_replace:
-        description: "If deploy_strategy=replace, update an OCI Load Balancer backend set to the new instance IP."
-        type: boolean
-        required: true
-        default: false
+    {}
 
 concurrency:
   group: oci-deploy-${{ github.ref }}
@@ -103,12 +90,16 @@ jobs:
       IMAGE: ${{ needs.build.outputs.image_ref }}
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASS: ${{ secrets.DB_PASS }}
-      DEPLOY_STRATEGY: ${{ inputs.deploy_strategy || 'update' }}
+      # NOTE: OCI container-instance "update image" has proven unreliable in this tenancy.
+      # We always do blue/green replace: create new -> update LB -> delete old.
+      DEPLOY_STRATEGY: replace
       BACKEND_IP_TYPE: ${{ vars.BACKEND_IP_TYPE || 'private' }}
       # Optional: configure these secrets if you want the LB update flow
       BACKEND_LB_OCID: ${{ secrets.OCI_BACKEND_LB_OCID }}
       BACKEND_SET_NAME: ${{ secrets.OCI_BACKEND_LB_BACKEND_SET_NAME }}
       BACKEND_PORT: ${{ secrets.OCI_BACKEND_LB_BACKEND_PORT }}
+      LB_HEALTH_TIMEOUT_SECONDS: ${{ vars.LB_HEALTH_TIMEOUT_SECONDS || '600' }}
+      LB_HEALTH_POLL_SECONDS: ${{ vars.LB_HEALTH_POLL_SECONDS || '10' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
