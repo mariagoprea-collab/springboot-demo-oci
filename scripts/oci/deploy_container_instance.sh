@@ -371,6 +371,24 @@ resolve_instance_ips() {
           ' | sed '/^null$/d' | head -n1)"
         fi
 
+        # Super-defensive fallback: search for IPv4-looking strings in the VNIC payload.
+        if [[ -z "${priv}" ]]; then
+          priv="$(echo "${vnic_json}" | jq -r '
+            .. | objects
+            | (.privateIp? // .privateIpAddress? // .ipAddress? // ."private-ip"? // ."private-ip-address"? // ."ip-address"? // empty)
+            | select(type=="string")
+            | select(test("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))
+          ' | head -n1)"
+        fi
+        if [[ -z "${pub}" ]]; then
+          pub="$(echo "${vnic_json}" | jq -r '
+            .. | objects
+            | (.publicIp? // .publicIpAddress? // ."public-ip"? // ."public-ip-address"? // empty)
+            | select(type=="string")
+            | select(test("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))
+          ' | head -n1)"
+        fi
+
         # If public IP still missing, try publicIpId -> public-ip get.
         if [[ -z "${pub}" ]]; then
           local pub_id
@@ -653,6 +671,10 @@ if [[ -n "${NEW_INSTANCE_IP:-}" ]]; then
   log "Resolved NEW_INSTANCE_IP (${BACKEND_IP_TYPE}) = ${NEW_INSTANCE_IP}"
 else
   log "Could not resolve NEW_INSTANCE_IP; LB update will not work until IP resolution is fixed or provided manually."
+  if [[ -f oci_vnic_get.json ]]; then
+    log "Debug: first IPv4-ish strings found in VNIC payload:"
+    jq -r '.. | select(type=="string") | select(test("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))' oci_vnic_get.json 2>/dev/null | head -n 10 | while read -r ip; do log "  - ${ip}"; done
+  fi
 fi
 
 
