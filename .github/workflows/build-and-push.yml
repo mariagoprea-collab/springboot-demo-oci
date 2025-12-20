@@ -104,8 +104,6 @@ jobs:
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASS: ${{ secrets.DB_PASS }}
       DEPLOY_STRATEGY: ${{ inputs.deploy_strategy || 'update' }}
-      UPDATE_BACKEND_LB_ON_REPLACE: ${{ inputs.update_backend_lb_on_replace || false }}
-      ENABLE_LB_UPDATE_ON_REPLACE: ${{ (inputs.update_backend_lb_on_replace || vars.ENABLE_LB_UPDATE_ON_REPLACE) && 'true' || 'false' }}
       BACKEND_IP_TYPE: ${{ vars.BACKEND_IP_TYPE || 'private' }}
       # Optional: configure these secrets if you want the LB update flow
       BACKEND_LB_OCID: ${{ secrets.OCI_BACKEND_LB_OCID }}
@@ -128,7 +126,7 @@ jobs:
           scripts/oci/deploy_container_instance.sh
 
       - name: Update backend load balancer (only on replace)
-        if: ${{ env.ENABLE_LB_UPDATE_ON_REPLACE == 'true' && env.DID_REPLACE == 'true' }}
+        if: ${{ env.DID_REPLACE == 'true' && env.BACKEND_LB_OCID != '' && env.BACKEND_SET_NAME != '' && env.BACKEND_PORT != '' && env.NEW_INSTANCE_IP != '' }}
         run: |
           set -euo pipefail
           scripts/oci/update_lb_backend.sh
