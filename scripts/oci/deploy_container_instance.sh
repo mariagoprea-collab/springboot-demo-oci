@@ -82,11 +82,25 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 2
 fi
 
+DEPLOY_GIT_SHA="${GITHUB_SHA:-unknown}"
+DEPLOY_REPO="${GITHUB_REPOSITORY:-unknown}"
+
+TAGS_JSON="$(
+  jq -nc \
+    --arg deployedBy "github-actions" \
+    --arg gitSha "${DEPLOY_GIT_SHA}" \
+    --arg image "${IMAGE}" \
+    --arg repo "${DEPLOY_REPO}" \
+    '{deployedBy:$deployedBy, gitSha:$gitSha, image:$image, repo:$repo}'
+)"
+echo "${TAGS_JSON}" > freeform-tags.json
+
 echo "Deploying OCI Container Instance:"
 echo "  - Name:   ${CONTAINER_INSTANCE_NAME}"
 echo "  - Image:  ${IMAGE}"
 echo "  - Mode:   ${DEPLOY_STRATEGY}"
 echo "  - Shape:  ${SHAPE} (ocpus=${SHAPE_OCPUS}, memGB=${SHAPE_MEMORY_GB})"
+echo "  - Tags:   gitSha=${DEPLOY_GIT_SHA}"
 
 AVAILABILITY_DOMAIN="$(
   oci iam availability-domain list \
@@ -238,6 +252,7 @@ create_instance() {
       --shape-config file://shape-config.json \
       --containers file://containers.json \
       --vnics file://vnics.json \
+      --freeform-tags "$(cat freeform-tags.json)" \
       --output json
   )"
   echo "${out}" | jq -r '.data.id'
@@ -248,11 +263,44 @@ get_instance_images() {
   oci container-instances container-instance get \
     --container-instance-id "$id" \
     --output json | jq -r '
-      (.data.containers // .data."containers" // [])
+      def containers:
+        (
+          (.data.containers? // empty),
+          (.data."containers"? // empty),
+          (.data.containerConfig.containers? // empty),
+          (.data."container-config".containers? // empty),
+          (.data.containerConfiguration.containers? // empty)
+        )
+        | if type == "array" then . else empty end;
+
+      [containers]
+      | add
       | if type == "array" then . else [] end
-      | map(.imageUrl // ."image-url" // empty)
+      | map(
+          .imageUrl
+          // ."image-url"
+          // .image
+          // ."image"
+          // empty
+        )
       | .[]
     ' | sed '/^$/d' || true
+}
+
+get_instance_containers_debug() {
+  local id="$1"
+  oci container-instances container-instance get \
+    --container-instance-id "$id" \
+    --output json | jq -r '
+      .data as $d
+      | [
+          ("lifecycleState=" + ($d.lifecycleState // $d."lifecycle-state" // "unknown")),
+          ("displayName=" + ($d.displayName // $d."display-name" // "unknown")),
+          ("has.data.containers=" + ((($d.containers? // $d."containers"?) | type) // "missing")),
+          ("has.data.containerConfig.containers=" + (((($d.containerConfig? // $d."container-config"? // $d.containerConfiguration?) | .containers?) | type) // "missing"))
+        ]
+      | .[]
+    ' 2>/dev/null || true
 }
 
 update_instance() {
@@ -264,7 +312,8 @@ update_instance() {
   cat > update-details.json <<EOF
 {
   "containers": $(cat containers.json),
-  "shapeConfig": $(cat shape-config.json)
+  "shapeConfig": $(cat shape-config.json),
+  "freeformTags": $(cat freeform-tags.json)
 }
 EOF
 
@@ -337,9 +386,32 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
     wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
 
     # Validate OCI reports the intended image (some update paths can be a no-op).
-    mapfile -t reported_images < <(get_instance_images "${NEW_INSTANCE_ID}")
+    # Give OCI a moment for eventual consistency if fields are lagging.
+    reported_images=()
+    for attempt in 1 2 3 4; do
+      mapfile -t reported_images < <(get_instance_images "${NEW_INSTANCE_ID}")
+      if (( ${#reported_images[@]} > 0 )); then
+        break
+      fi
+      sleep 10
+    done
+
     if (( ${#reported_images[@]} == 0 )); then
-      log "Warning: OCI did not report any container imageUrl values for ${NEW_INSTANCE_ID}."
+      log "Warning: OCI did not report any container image values for ${NEW_INSTANCE_ID} (after update)."
+      log "OCI response shape hints:"
+      get_instance_containers_debug "${NEW_INSTANCE_ID}" | while read -r line; do log "  - ${line}"; done
+
+      if [[ "${FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH}" == "true" ]]; then
+        log "Falling back to REPLACE because we cannot verify the running image via OCI API fields."
+        for id in "${ids[@]}"; do
+          delete_instance_and_wait_gone "${id}"
+        done
+        NEW_INSTANCE_ID="$(create_instance)"
+        wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
+      else
+        log "FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH=false so not replacing. Exiting with failure."
+        exit 1
+      fi
     else
       log "OCI reports container image(s):"
       for img in "${reported_images[@]}"; do
@@ -392,7 +464,31 @@ DETAILS="$(oci container-instances container-instance get --container-instance-i
 
 log "Post-deploy verification (OCI):"
 echo "${DETAILS}" | jq -r '.data | "  - lifecycleState=\(.lifecycleState // ."lifecycle-state" // "unknown")\n  - displayName=\(.displayName // ."display-name" // "unknown")"' >&2 || true
-echo "${DETAILS}" | jq -r '.data.containers // [] | "  - containers:\n" + (map("    - \(.displayName // ."display-name" // "container"): \(.imageUrl // ."image-url" // "unknown")") | join("\n"))' >&2 || true
+echo "${DETAILS}" | jq -r '.data | "  - freeformTags=" + ((.freeformTags // ."freeform-tags" // {})|tostring)' >&2 || true
+echo "${DETAILS}" | jq -r '
+  def containers:
+    (
+      (.data.containers? // empty),
+      (.data."containers"? // empty),
+      (.data.containerConfig.containers? // empty),
+      (.data."container-config".containers? // empty),
+      (.data.containerConfiguration.containers? // empty)
+    )
+    | if type == "array" then . else empty end;
+
+  ([containers] | add) as $cs
+  | "  - containers:\n"
+    + (
+      ($cs // [])
+      | map(
+          "    - "
+          + ((.displayName // ."display-name" // "container")|tostring)
+          + ": "
+          + ((.imageUrl // ."image-url" // .image // ."image" // "unknown")|tostring)
+        )
+      | join("\n")
+    )
+' >&2 || true
 
 NEW_IP="$(
   echo "${DETAILS}" | jq -r '
