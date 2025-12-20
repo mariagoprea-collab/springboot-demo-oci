@@ -204,8 +204,33 @@ wait_for_state_in() {
 
 delete_instance_and_wait_gone() {
   local id="$1"
-  log "Deleting container instance: ${id}"
+  # If it's already gone (or already deleting), don't spam delete calls.
+  local state
+  set +e
+  state="$(oci container-instances container-instance get --container-instance-id "${id}" --output json 2>/dev/null | jq -r '.data.lifecycleState // .data."lifecycle-state" // empty')"
+  local get_rc=$?
+  set -e
 
+  if [[ $get_rc -ne 0 || -z "${state}" ]]; then
+    log "Skip delete (not found): ${id}"
+    return 0
+  fi
+
+  case "$(echo "${state}" | tr '[:lower:]' '[:upper:]')" in
+    DELETED)
+      log "Skip delete (already DELETED): ${id}"
+      return 0
+      ;;
+    DELETING)
+      log "Already DELETING, waiting until gone: ${id}"
+      # Fall through to the "wait until GET fails" loop below.
+      ;;
+    *)
+      log "Deleting container instance: ${id} (state=${state})"
+      ;;
+  esac
+
+  if [[ "$(echo "${state}" | tr '[:lower:]' '[:upper:]')" != "DELETING" ]]; then
   # Delete is async; OCI typically returns a work-request id we can poll.
   local delete_out wr_id
   delete_out="$(
@@ -221,6 +246,7 @@ delete_instance_and_wait_gone() {
     log "Delete work request: ${wr_id}"
     wait_for_ci_work_request "${wr_id}" "delete(${id})"
     return 0
+  fi
   fi
 
   # Fallback: wait until GET no longer returns the resource (silent delete response).
@@ -547,6 +573,13 @@ if [[ "${DEPLOY_STRATEGY}" == "replace" ]]; then
   fi
   NEW_INSTANCE_ID="$(create_instance)"
   wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
+  # After replace, refresh and clean up any stragglers (do not reuse stale pre-delete list).
+  mapfile -t ids < <(list_matching_instance_ids)
+  for id in "${ids[@]:-}"; do
+    if [[ "${id}" != "${NEW_INSTANCE_ID}" ]]; then
+      delete_instance_and_wait_gone "${id}"
+    fi
+  done
 elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
   echo "Update strategy: update newest matching instance, otherwise create."
   mapfile -t ids < <(list_matching_instance_ids)
@@ -580,6 +613,8 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
         done
         NEW_INSTANCE_ID="$(create_instance)"
         wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
+        # Refresh list so later cleanup doesn't try deleting already-deleted IDs.
+        mapfile -t ids < <(list_matching_instance_ids)
       else
         log "FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH=false so not replacing. Exiting with failure."
         exit 1
@@ -607,6 +642,8 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
           done
           NEW_INSTANCE_ID="$(create_instance)"
           wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
+          # Refresh list so later cleanup doesn't try deleting already-deleted IDs.
+          mapfile -t ids < <(list_matching_instance_ids)
         else
           log "FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH=false so not replacing. Exiting with failure."
           exit 1
@@ -616,8 +653,10 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
 
     if [[ "${CLEANUP_DUPLICATES}" == "true" ]] && (( ${#ids[@]} > 1 )); then
       log "Found ${#ids[@]} instances named ${CONTAINER_INSTANCE_NAME}. Cleaning up older duplicates (keeping newest: ${NEW_INSTANCE_ID})"
-      for ((i=1; i<${#ids[@]}; i++)); do
-        delete_instance_and_wait_gone "${ids[$i]}"
+      for id in "${ids[@]}"; do
+        if [[ "${id}" != "${NEW_INSTANCE_ID}" ]]; then
+          delete_instance_and_wait_gone "${id}"
+        fi
       done
     fi
   else
