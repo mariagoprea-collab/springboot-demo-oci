@@ -82,13 +82,39 @@ while true; do
     exit 1
   fi
 
+  # OCI is sometimes eventually consistent right after backend create; health endpoint can 404 briefly.
+  # Step 1: ensure the backend is visible in list.
+  if ! oci lb backend get \
+      --load-balancer-id "${LB_ID}" \
+      --backend-set-name "${BACKEND_SET}" \
+      --backend-name "${NEW_IP}:${PORT}" \
+      --output json >/dev/null 2>&1; then
+    echo "Backend not visible yet (waiting) (elapsed=$((now-start))s)"
+    sleep "${HEALTH_POLL_SECONDS}"
+    continue
+  fi
+
+  set +e
   health_json="$(
     oci lb backend-health get \
       --load-balancer-id "${LB_ID}" \
       --backend-set-name "${BACKEND_SET}" \
       --backend-name "${NEW_IP}:${PORT}" \
-      --output json
+      --output json 2>oci_backend_health_err.log
   )"
+  rc=$?
+  set -e
+  if [[ $rc -ne 0 ]]; then
+    # Treat 404 NotAuthorizedOrNotFound as "not ready yet" until timeout; could be eventual consistency.
+    if grep -q '"code": "NotAuthorizedOrNotFound"' oci_backend_health_err.log 2>/dev/null; then
+      echo "Backend health endpoint not ready yet (404). Retrying... (elapsed=$((now-start))s)"
+      sleep "${HEALTH_POLL_SECONDS}"
+      continue
+    fi
+    echo "Failed to query backend health (rc=${rc}). Error:" >&2
+    cat oci_backend_health_err.log >&2 || true
+    exit $rc
+  fi
 
   # OCI health status is usually OK/WARNING/CRITICAL/UNKNOWN.
   status="$(echo "${health_json}" | jq -r '.data.status // .data."status" // empty')"
