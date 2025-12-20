@@ -285,6 +285,16 @@ create_instance() {
   echo "${out}" | jq -r '.data.id'
 }
 
+export_multiline_env() {
+  local name="$1"
+  local value="$2"
+  {
+    echo "${name}<<EOF"
+    echo "${value}"
+    echo "EOF"
+  } >> "${GITHUB_ENV}"
+}
+
 resolve_instance_ips() {
   local id="$1"
   local vnics_json priv pub
@@ -617,14 +627,19 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
 
       if [[ "${FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH}" == "true" ]]; then
         log "Falling back to REPLACE because we cannot verify the running image via OCI API fields."
+        DID_REPLACE="true"
+        export DID_REPLACE
         echo "DID_REPLACE=true" >> "${GITHUB_ENV}"
-        for id in "${ids[@]}"; do
-          delete_instance_and_wait_gone "${id}"
-        done
+
+        # Blue/green cutover: create the new instance first; LB update + cleanup happen in later steps.
+        CUTOVER_PENDING="true"
+        export CUTOVER_PENDING
+        OLD_INSTANCE_IDS_VALUE="$(printf "%s\n" "${ids[@]}")"
+        export OLD_INSTANCE_IDS_VALUE
+        export_multiline_env "OLD_INSTANCE_IDS" "${OLD_INSTANCE_IDS_VALUE}"
+
         NEW_INSTANCE_ID="$(create_instance)"
         wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
-        # Refresh list so later cleanup doesn't try deleting already-deleted IDs.
-        mapfile -t ids < <(list_matching_instance_ids)
       else
         log "FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH=false so not replacing. Exiting with failure."
         exit 1
@@ -646,14 +661,19 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
         log "OCI still does NOT report the desired image (${IMAGE}) after update."
         if [[ "${FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH}" == "true" ]]; then
           log "Falling back to REPLACE to guarantee the new image is deployed."
+          DID_REPLACE="true"
+          export DID_REPLACE
           echo "DID_REPLACE=true" >> "${GITHUB_ENV}"
-          for id in "${ids[@]}"; do
-            delete_instance_and_wait_gone "${id}"
-          done
+
+          # Blue/green cutover: create the new instance first; LB update + cleanup happen in later steps.
+          CUTOVER_PENDING="true"
+          export CUTOVER_PENDING
+          OLD_INSTANCE_IDS_VALUE="$(printf "%s\n" "${ids[@]}")"
+          export OLD_INSTANCE_IDS_VALUE
+          export_multiline_env "OLD_INSTANCE_IDS" "${OLD_INSTANCE_IDS_VALUE}"
+
           NEW_INSTANCE_ID="$(create_instance)"
           wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
-          # Refresh list so later cleanup doesn't try deleting already-deleted IDs.
-          mapfile -t ids < <(list_matching_instance_ids)
         else
           log "FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH=false so not replacing. Exiting with failure."
           exit 1
@@ -663,11 +683,15 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
 
     if [[ "${CLEANUP_DUPLICATES}" == "true" ]] && (( ${#ids[@]} > 1 )); then
       log "Found ${#ids[@]} instances named ${CONTAINER_INSTANCE_NAME}. Cleaning up older duplicates (keeping newest: ${NEW_INSTANCE_ID})"
-      for id in "${ids[@]}"; do
-        if [[ "${id}" != "${NEW_INSTANCE_ID}" ]]; then
-          delete_instance_and_wait_gone "${id}"
-        fi
-      done
+      if [[ "${CUTOVER_PENDING:-}" == "true" ]]; then
+        log "Skip in-step cleanup; will delete old instances after LB cutover."
+      else
+        for id in "${ids[@]}"; do
+          if [[ "${id}" != "${NEW_INSTANCE_ID}" ]]; then
+            delete_instance_and_wait_gone "${id}"
+          fi
+        done
+      fi
     fi
   else
     NEW_INSTANCE_ID="$(create_instance)"

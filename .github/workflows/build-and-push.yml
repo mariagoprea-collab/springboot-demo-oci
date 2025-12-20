@@ -130,3 +130,10 @@ jobs:
         run: |
           set -euo pipefail
           scripts/oci/update_lb_backend.sh
+
+      - name: Cleanup old instances (after LB cutover)
+        if: ${{ env.DID_REPLACE == 'true' && env.OLD_INSTANCE_IDS != '' && env.BACKEND_LB_OCID != '' && env.BACKEND_SET_NAME != '' && env.BACKEND_PORT != '' && env.NEW_INSTANCE_IP != '' }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/oci/cleanup_old_instances.sh
+          scripts/oci/cleanup_old_instances.sh
