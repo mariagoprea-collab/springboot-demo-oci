@@ -452,6 +452,7 @@ update_instance() {
   cat > update-details.json <<EOF
 {
   "containers": $(cat containers.json),
+  "containerConfig": { "containers": $(cat containers.json) },
   "shapeConfig": $(cat shape-config.json),
   "freeformTags": $(cat freeform-tags.json)
 }
