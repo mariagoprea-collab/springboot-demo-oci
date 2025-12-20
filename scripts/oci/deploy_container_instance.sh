@@ -182,11 +182,47 @@ create_instance() {
 update_instance() {
   local id="$1"
   log "Updating container instance: ${id}"
+
+  # OCI CLI for Container Instances has differed across versions.
+  # We try the newer/cleaner "update details" form first, then fall back to --from-json.
+  cat > update-details.json <<EOF
+{
+  "containers": $(cat containers.json),
+  "shapeConfig": $(cat shape-config.json)
+}
+EOF
+
+  cat > update-from-json.json <<EOF
+{
+  "containerInstanceId": "${id}",
+  "updateContainerInstanceDetails": $(cat update-details.json)
+}
+EOF
+
+  set +e
   oci container-instances container-instance update \
     --container-instance-id "${id}" \
-    --containers file://containers.json \
-    --shape-config file://shape-config.json \
-    --output json >/dev/null
+    --update-container-instance-details file://update-details.json \
+    --output json 1>oci_update_stdout.log 2>oci_update_stderr.log
+  local rc=$?
+
+  if [[ $rc -ne 0 ]]; then
+    # Fallback: try from-json format (older/newer CLI variants).
+    oci container-instances container-instance update \
+      --from-json file://update-from-json.json \
+      --output json 1>>oci_update_stdout.log 2>>oci_update_stderr.log
+    rc=$?
+  fi
+  set -e
+
+  if [[ $rc -ne 0 ]]; then
+    log "OCI update failed (rc=$rc). STDOUT/STDERR below:"
+    log "=============== UPDATE STDOUT ==============="
+    cat oci_update_stdout.log >&2 || true
+    log "=============== UPDATE STDERR ==============="
+    cat oci_update_stderr.log >&2 || true
+    return $rc
+  fi
 }
 
 NEW_INSTANCE_ID=""
