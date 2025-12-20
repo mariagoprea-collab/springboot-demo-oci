@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ro">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -19,7 +20,7 @@
             padding: 25px 0;
             font-size: 2rem;
             font-weight: bold;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         main {
@@ -32,11 +33,12 @@
             background-color: white;
             padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             margin-bottom: 30px;
         }
 
-        .form-container input, .form-container button {
+        .form-container input,
+        .form-container button {
             width: 100%;
             padding: 10px;
             margin-top: 10px;
@@ -64,10 +66,11 @@
             background-color: white;
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
-        th, td {
+        th,
+        td {
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #ddd;
@@ -84,76 +87,78 @@
         }
     </style>
 </head>
+
 <body>
 
-<header>Appointments</header>
+    <header>Appointments</header>
 
-<main>
-    <div class="form-container">
-        <input type="text" id="name" placeholder="Client name">
-        <input type="datetime-local" id="scheduledDateTime">
-        <button onclick="addUser()">Add appointment</button>
-    </div>
+    <main>
+        <div class="form-container">
+            <input type="text" id="name" placeholder="Client name">
+            <input type="datetime-local" id="scheduledDateTime">
+            <button onclick="addUser()">Add a new appointment</button>
+        </div>
 
-    <table id="appointmentTable">
-        <thead>
-        <tr>
-            <th>Client name</th>
-            <th>Date and Time</th>
-        </tr>
-        </thead>
-        <tbody id="userList">
-        </tbody>
-    </table>
-</main>
+        <table id="appointmentTable">
+            <thead>
+                <tr>
+                    <th>Client name</th>
+                    <th>Date and Time</th>
+                </tr>
+            </thead>
+            <tbody id="userList">
+            </tbody>
+        </table>
+    </main>
 
-<script>
-    async function addUser() {
-        const name = document.getElementById("name").value;
-        const scheduledDateTime = document.getElementById("scheduledDateTime").value;
+    <script>
+        async function addUser() {
+            const name = document.getElementById("name").value;
+            const scheduledDateTime = document.getElementById("scheduledDateTime").value;
 
-        if (!name || !scheduledDateTime) {
-            alert("Please enter the name and date & time!");
-            return;
+            if (!name || !scheduledDateTime) {
+                alert("Please enter the name and date & time!");
+                return;
+            }
+
+            const response = await fetch("/users", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, scheduledDateTime })
+            });
+
+            if (!response.ok) {
+                alert("Error adding the appointment");
+                return;
+            }
+
+            const user = await response.json();
+            addUserRow(user);
+
+            document.getElementById("name").value = '';
+            document.getElementById("scheduledDateTime").value = '';
         }
 
-        const response = await fetch("/users", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ name, scheduledDateTime })
-        });
-
-        if (!response.ok) {
-            alert("Error adding the appointment");
-            return;
+        function addUserRow(user) {
+            const tbody = document.getElementById("userList");
+            const row = document.createElement("tr");
+            // înlocuim 'T' cu spațiu pentru afișare mai frumoasă
+            const formattedDateTime = user.scheduledDateTime.replace('T', ' ');
+            row.innerHTML = `<td>${user.name}</td><td>${formattedDateTime}</td>`;
+            tbody.appendChild(row);
         }
 
-        const user = await response.json();
-        addUserRow(user);
+        async function loadUsers() {
+            const response = await fetch("/users");
+            const users = await response.json();
+            const tbody = document.getElementById("userList");
+            tbody.innerHTML = '';
+            users.forEach(addUserRow);
+        }
 
-        document.getElementById("name").value = '';
-        document.getElementById("scheduledDateTime").value = '';
-    }
-
-    function addUserRow(user) {
-        const tbody = document.getElementById("userList");
-        const row = document.createElement("tr");
-        // înlocuim 'T' cu spațiu pentru afișare mai frumoasă
-        const formattedDateTime = user.scheduledDateTime.replace('T', ' ');
-        row.innerHTML = `<td>${user.name}</td><td>${formattedDateTime}</td>`;
-        tbody.appendChild(row);
-    }
-
-    async function loadUsers() {
-        const response = await fetch("/users");
-        const users = await response.json();
-        const tbody = document.getElementById("userList");
-        tbody.innerHTML = '';
-        users.forEach(addUserRow);
-    }
-
-    window.onload = loadUsers;
-</script>
+        window.onload = loadUsers;
+    </script>
 
 </body>
+
 </html>
