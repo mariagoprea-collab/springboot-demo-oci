@@ -73,6 +73,7 @@ require_env "DB_PASS"
 
 DEPLOY_STRATEGY="${DEPLOY_STRATEGY:-update}" # update | replace
 CLEANUP_DUPLICATES="${CLEANUP_DUPLICATES:-true}" # true | false (only used for update strategy)
+FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH="${FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH:-true}" # true | false
 SHAPE_OCPUS="${SHAPE_OCPUS:-1}"
 SHAPE_MEMORY_GB="${SHAPE_MEMORY_GB:-2}"
 
@@ -242,6 +243,18 @@ create_instance() {
   echo "${out}" | jq -r '.data.id'
 }
 
+get_instance_images() {
+  local id="$1"
+  oci container-instances container-instance get \
+    --container-instance-id "$id" \
+    --output json | jq -r '
+      (.data.containers // .data."containers" // [])
+      | if type == "array" then . else [] end
+      | map(.imageUrl // ."image-url" // empty)
+      | .[]
+    ' | sed '/^$/d' || true
+}
+
 update_instance() {
   local id="$1"
   log "Updating container instance: ${id}"
@@ -322,6 +335,40 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
     update_instance "${NEW_INSTANCE_ID}"
     # Ensure instance is back to ACTIVE after update.
     wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
+
+    # Validate OCI reports the intended image (some update paths can be a no-op).
+    mapfile -t reported_images < <(get_instance_images "${NEW_INSTANCE_ID}")
+    if (( ${#reported_images[@]} == 0 )); then
+      log "Warning: OCI did not report any container imageUrl values for ${NEW_INSTANCE_ID}."
+    else
+      log "OCI reports container image(s):"
+      for img in "${reported_images[@]}"; do
+        log "  - ${img}"
+      done
+      local matched=false
+      for img in "${reported_images[@]}"; do
+        if [[ "${img}" == "${IMAGE}" ]]; then
+          matched=true
+          break
+        fi
+      done
+
+      if [[ "${matched}" != "true" ]]; then
+        log "OCI still does NOT report the desired image (${IMAGE}) after update."
+        if [[ "${FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH}" == "true" ]]; then
+          log "Falling back to REPLACE to guarantee the new image is deployed."
+          for id in "${ids[@]}"; do
+            delete_instance_and_wait_gone "${id}"
+          done
+          NEW_INSTANCE_ID="$(create_instance)"
+          wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
+        else
+          log "FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH=false so not replacing. Exiting with failure."
+          exit 1
+        fi
+      fi
+    fi
+
     if [[ "${CLEANUP_DUPLICATES}" == "true" ]] && (( ${#ids[@]} > 1 )); then
       log "Found ${#ids[@]} instances named ${CONTAINER_INSTANCE_NAME}. Cleaning up older duplicates (keeping newest: ${NEW_INSTANCE_ID})"
       for ((i=1; i<${#ids[@]}; i++)); do
