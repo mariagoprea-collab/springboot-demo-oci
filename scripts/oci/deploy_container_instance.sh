@@ -373,10 +373,20 @@ resolve_instance_ips() {
 
         # Super-defensive fallback: search for IPv4-looking strings in the VNIC payload.
         if [[ -z "${priv}" ]]; then
+          # Prefer explicit key names when present anywhere in the tree.
           priv="$(echo "${vnic_json}" | jq -r '
             .. | objects
             | (.privateIp? // .privateIpAddress? // .ipAddress? // ."private-ip"? // ."private-ip-address"? // ."ip-address"? // empty)
             | select(type=="string")
+            | gsub("\\s+$";"")
+            | select(test("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))
+          ' | head -n1)"
+        fi
+        if [[ -z "${priv}" ]]; then
+          # Last resort: first IPv4-looking string anywhere.
+          priv="$(echo "${vnic_json}" | jq -r '
+            .. | select(type=="string")
+            | gsub("\\s+$";"")
             | select(test("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))
           ' | head -n1)"
         fi
@@ -385,6 +395,7 @@ resolve_instance_ips() {
             .. | objects
             | (.publicIp? // .publicIpAddress? // ."public-ip"? // ."public-ip-address"? // empty)
             | select(type=="string")
+            | gsub("\\s+$";"")
             | select(test("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"))
           ' | head -n1)"
         fi
