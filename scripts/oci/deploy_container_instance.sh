@@ -449,8 +449,18 @@ resolve_instance_ips() {
     fi
   fi
 
-  [[ -n "${priv:-}" && "${priv}" != "null" ]] && echo "NEW_INSTANCE_PRIVATE_IP=${priv}" >> "${GITHUB_ENV}"
-  [[ -n "${pub:-}" && "${pub}" != "null" ]] && echo "NEW_INSTANCE_PUBLIC_IP=${pub}" >> "${GITHUB_ENV}"
+  # IMPORTANT: writing to $GITHUB_ENV only affects *later steps*, not the current shell.
+  # We need the IP in this same step to update the LB.
+  if [[ -n "${priv:-}" && "${priv}" != "null" ]]; then
+    NEW_INSTANCE_PRIVATE_IP="${priv}"
+    export NEW_INSTANCE_PRIVATE_IP
+    echo "NEW_INSTANCE_PRIVATE_IP=${priv}" >> "${GITHUB_ENV}"
+  fi
+  if [[ -n "${pub:-}" && "${pub}" != "null" ]]; then
+    NEW_INSTANCE_PUBLIC_IP="${pub}"
+    export NEW_INSTANCE_PUBLIC_IP
+    echo "NEW_INSTANCE_PUBLIC_IP=${pub}" >> "${GITHUB_ENV}"
+  fi
 }
 
 get_instance_images() {
@@ -683,6 +693,7 @@ else
   NEW_INSTANCE_IP="${NEW_INSTANCE_PRIVATE_IP:-}"
 fi
 if [[ -n "${NEW_INSTANCE_IP}" ]]; then
+  export NEW_INSTANCE_IP
   echo "NEW_INSTANCE_IP=${NEW_INSTANCE_IP}" >> "${GITHUB_ENV}"
 fi
 
