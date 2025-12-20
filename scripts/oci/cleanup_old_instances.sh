@@ -13,6 +13,7 @@ require_env "OLD_INSTANCE_IDS"
 require_env "CONTAINER_INSTANCE_ID" # the new one
 
 NEW_ID="${CONTAINER_INSTANCE_ID}"
+GRACE_SECONDS="${CUTOVER_GRACE_SECONDS:-0}"
 
 log() { echo "$*" >&2; }
 
@@ -52,6 +53,12 @@ delete_if_needed() {
 }
 
 log "Cleaning up old instances after cutover (keeping ${NEW_ID})"
+
+# Optional grace period after LB cutover.
+if [[ "${GRACE_SECONDS}" =~ ^[0-9]+$ ]] && (( GRACE_SECONDS > 0 )); then
+  log "Waiting ${GRACE_SECONDS}s grace period before deleting old instances..."
+  sleep "${GRACE_SECONDS}"
+fi
 
 # OLD_INSTANCE_IDS is newline-separated.
 while IFS= read -r id; do

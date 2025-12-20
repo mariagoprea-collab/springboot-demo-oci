@@ -100,6 +100,7 @@ jobs:
       BACKEND_PORT: ${{ secrets.OCI_BACKEND_LB_BACKEND_PORT }}
       LB_HEALTH_TIMEOUT_SECONDS: ${{ vars.LB_HEALTH_TIMEOUT_SECONDS || '600' }}
       LB_HEALTH_POLL_SECONDS: ${{ vars.LB_HEALTH_POLL_SECONDS || '10' }}
+      CUTOVER_GRACE_SECONDS: ${{ vars.CUTOVER_GRACE_SECONDS || '0' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

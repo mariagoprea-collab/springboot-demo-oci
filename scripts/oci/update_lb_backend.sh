@@ -23,6 +23,8 @@ LB_ID="${BACKEND_LB_OCID}"
 BACKEND_SET="${BACKEND_SET_NAME}"
 PORT="${BACKEND_PORT}"
 NEW_IP="${NEW_INSTANCE_IP}"
+HEALTH_TIMEOUT_SECONDS="${LB_HEALTH_TIMEOUT_SECONDS:-600}"
+HEALTH_POLL_SECONDS="${LB_HEALTH_POLL_SECONDS:-10}"
 
 echo "Updating LB backend set:"
 echo "  - LB:          ${LB_ID}"
@@ -64,6 +66,38 @@ if [[ "${has_new}" != "true" ]]; then
 else
   echo "Backend ${NEW_IP}:${PORT} already exists"
 fi
+
+echo "Waiting for backend ${NEW_IP}:${PORT} to become healthy (timeout=${HEALTH_TIMEOUT_SECONDS}s)"
+start="$(date +%s)"
+while true; do
+  now="$(date +%s)"
+  if (( now - start > HEALTH_TIMEOUT_SECONDS )); then
+    echo "Timed out waiting for backend health: ${NEW_IP}:${PORT}" >&2
+    # Dump health details for debugging.
+    oci lb backend-health get \
+      --load-balancer-id "${LB_ID}" \
+      --backend-set-name "${BACKEND_SET}" \
+      --backend-name "${NEW_IP}:${PORT}" \
+      --output json || true
+    exit 1
+  fi
+
+  health_json="$(
+    oci lb backend-health get \
+      --load-balancer-id "${LB_ID}" \
+      --backend-set-name "${BACKEND_SET}" \
+      --backend-name "${NEW_IP}:${PORT}" \
+      --output json
+  )"
+
+  # OCI health status is usually OK/WARNING/CRITICAL/UNKNOWN.
+  status="$(echo "${health_json}" | jq -r '.data.status // .data."status" // empty')"
+  echo "Backend health status=${status:-unknown} (elapsed=$((now-start))s)"
+  if [[ "${status}" == "OK" || "${status}" == "WARNING" ]]; then
+    break
+  fi
+  sleep "${HEALTH_POLL_SECONDS}"
+done
 
 echo "Removing old backends (keeping only ${NEW_IP}:${PORT})"
 for b in "${existing[@]:-}"; do
