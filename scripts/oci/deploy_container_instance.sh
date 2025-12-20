@@ -262,10 +262,12 @@ create_instance() {
 resolve_instance_ips() {
   local id="$1"
   local vnics_json priv pub
+  priv=""
+  pub=""
 
   # Prefer list-vnics if available (most reliable).
   set +e
-  vnics_json="$(oci container-instances container-instance list-vnics --container-instance-id "${id}" --output json 2>/dev/null)"
+  vnics_json="$(oci container-instances container-instance list-vnics --container-instance-id "${id}" --output json 2>oci_list_vnics_stderr.log)"
   local rc=$?
   set -e
 
@@ -280,32 +282,86 @@ resolve_instance_ips() {
       | .[0]
       | (.publicIp // ."public-ip" // .publicIpAddress // ."public-ip-address" // empty)
     ' | sed '/^null$/d' | head -n1)"
+  else
+    log "Note: container-instance list-vnics not available or failed (rc=${rc}). Falling back to network VNIC lookup."
+    if [[ -s oci_list_vnics_stderr.log ]]; then
+      log "list-vnics stderr:"
+      sed -n '1,120p' oci_list_vnics_stderr.log >&2 || true
+    fi
   fi
 
-  # Fallback: try to read from container-instance get response.
-  if [[ -z "${priv:-}" || "${priv:-}" == "null" || -z "${pub:-}" || "${pub:-}" == "null" ]]; then
-    local details
+  # Fallback: read VNIC OCID(s) from container-instance get response, then query Core Networking.
+  if [[ -z "${priv}" || -z "${pub}" ]]; then
+    local details vnic_id vnic_json
     details="$(oci container-instances container-instance get --container-instance-id "${id}" --output json)"
-    priv="${priv:-$(
-      echo "${details}" | jq -r '
-        .data
-        | (
-            (.vnics[0].privateIp // .vnics[0]."private-ip")
-            // (.primaryVnic?.privateIp // .primaryVnic?."private-ip")
-            // empty
-          )
-      ' | sed '/^null$/d' | head -n1
-    )}"
-    pub="${pub:-$(
-      echo "${details}" | jq -r '
-        .data
-        | (
-            (.vnics[0].publicIp // .vnics[0]."public-ip")
-            // (.primaryVnic?.publicIp // .primaryVnic?."public-ip")
-            // empty
-          )
-      ' | sed '/^null$/d' | head -n1
-    )}"
+
+    # Best-effort: some responses include IPs directly.
+    if [[ -z "${priv}" ]]; then
+      priv="$(
+        echo "${details}" | jq -r '
+          .data
+          | (
+              (.vnics[0].privateIp // .vnics[0]."private-ip")
+              // (.primaryVnic?.privateIp // .primaryVnic?."private-ip")
+              // empty
+            )
+        ' | sed '/^null$/d' | head -n1
+      )"
+    fi
+    if [[ -z "${pub}" ]]; then
+      pub="$(
+        echo "${details}" | jq -r '
+          .data
+          | (
+              (.vnics[0].publicIp // .vnics[0]."public-ip")
+              // (.primaryVnic?.publicIp // .primaryVnic?."public-ip")
+              // empty
+            )
+        ' | sed '/^null$/d' | head -n1
+      )"
+    fi
+
+    # If still missing, extract VNIC OCID and query `oci network vnic get`.
+    if [[ -z "${priv}" || -z "${pub}" ]]; then
+      vnic_id="$(
+        echo "${details}" | jq -r '
+          .data
+          | (
+              .vnics[0].vnicId
+              // .vnics[0]."vnic-id"
+              // .vnics[0].id
+              // .vnics[0]."id"
+              // .primaryVnic?.vnicId
+              // .primaryVnic?."vnic-id"
+              // empty
+            )
+        ' | sed '/^null$/d' | head -n1
+      )"
+
+      if [[ -n "${vnic_id}" ]]; then
+        log "Resolving IPs via Core Networking VNIC: ${vnic_id}"
+        vnic_json="$(oci network vnic get --vnic-id "${vnic_id}" --output json)"
+        if [[ -z "${priv}" ]]; then
+          priv="$(echo "${vnic_json}" | jq -r '.data.privateIp // .data."private-ip" // empty' | sed '/^null$/d' | head -n1)"
+        fi
+        if [[ -z "${pub}" ]]; then
+          pub="$(echo "${vnic_json}" | jq -r '.data.publicIp // .data."public-ip" // empty' | sed '/^null$/d' | head -n1)"
+        fi
+
+        # If public IP still missing, try publicIpId -> public-ip get.
+        if [[ -z "${pub}" ]]; then
+          local pub_id
+          pub_id="$(echo "${vnic_json}" | jq -r '.data.publicIpId // .data."public-ip-id" // empty' | sed '/^null$/d' | head -n1)"
+          if [[ -n "${pub_id}" ]]; then
+            local pub_json
+            pub_json="$(oci network public-ip get --public-ip-id "${pub_id}" --output json)"
+            pub="$(echo "${pub_json}" | jq -r '.data.ipAddress // .data."ip-address" // empty' | sed '/^null$/d' | head -n1)"
+          fi
+        fi
+      else
+        log "Could not find VNIC OCID on container instance get response; cannot resolve IPs automatically."
+      fi
+    fi
   fi
 
   [[ -n "${priv:-}" && "${priv}" != "null" ]] && echo "NEW_INSTANCE_PRIVATE_IP=${priv}" >> "${GITHUB_ENV}"
