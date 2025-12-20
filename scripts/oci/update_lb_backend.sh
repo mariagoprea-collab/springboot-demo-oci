@@ -36,11 +36,13 @@ mapfile -t existing < <(
     (.data // [])
     | .[]
     | (
-        (.ipAddress // ."ip-address") as $ip
-        | (.port // ."port") as $port
+        (.ipAddress // ."ip-address" // "") as $ip
+        | (.port // ."port" // empty) as $port
+        | select(($ip | type) == "string" and ($ip | length) > 0)
+        | select($port != null)
         | "\($ip):\($port)"
       )
-  ' | sed '/^null/d'
+  ' | sed '/^null/d' | sed '/^[[:space:]]*$/d'
 )
 
 has_new=false
@@ -65,6 +67,9 @@ fi
 
 echo "Removing old backends (keeping only ${NEW_IP}:${PORT})"
 for b in "${existing[@]:-}"; do
+  if [[ -z "${b// }" ]]; then
+    continue
+  fi
   if [[ "${b}" != "${NEW_IP}:${PORT}" ]]; then
     echo "Deleting backend ${b}"
     oci lb backend delete \
