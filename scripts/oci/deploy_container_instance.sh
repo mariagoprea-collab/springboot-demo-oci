@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+log() {
+  # Always log to stderr so command substitutions stay clean.
+  echo "$*" >&2
+}
+
 require_env() {
   local name="$1"
   if [[ -z "${!name:-}" ]]; then
@@ -77,12 +82,15 @@ EOF
 list_matching_instance_ids() {
   oci container-instances container-instance list \
     --compartment-id "${COMPARTMENT_ID}" \
+    --all \
     --output json | jq -r --arg name "${CONTAINER_INSTANCE_NAME}" '
-      (.data // [])
-      | map(select(.displayName == $name))
-      | sort_by(.timeCreated // "")
+      # OCI CLI sometimes returns {data:[...]} and sometimes returns [...] depending on cmd/service.
+      (if type == "array" then . else (.data // []) end)
+      | map(select((.displayName // ."display-name" // "") == $name))
+      | sort_by(.timeCreated // ."time-created" // "")
       | reverse
-      | .[].id
+      | .[]
+      | (.id // empty)
     ' | sed '/^null$/d' || true
 }
 
@@ -122,7 +130,7 @@ wait_for_state_in() {
 
 delete_instance_and_wait_gone() {
   local id="$1"
-  echo "Deleting container instance: ${id}"
+  log "Deleting container instance: ${id}"
   oci container-instances container-instance delete --container-instance-id "${id}" --force
 
   # Wait until get fails or state becomes a terminal one.
@@ -143,7 +151,7 @@ delete_instance_and_wait_gone() {
 }
 
 create_instance() {
-  echo "Creating container instance: ${CONTAINER_INSTANCE_NAME}"
+  log "Creating container instance: ${CONTAINER_INSTANCE_NAME}"
   local out
   out="$(
     oci container-instances container-instance create \
@@ -161,7 +169,7 @@ create_instance() {
 
 update_instance() {
   local id="$1"
-  echo "Updating container instance: ${id}"
+  log "Updating container instance: ${id}"
   oci container-instances container-instance update \
     --container-instance-id "${id}" \
     --containers file://containers.json \
