@@ -160,6 +160,7 @@ list_matching_instance_ids() {
       items
       | map(select(type == "object"))
       | map(select((.displayName // ."display-name" // "") == $name))
+      | map(select((.lifecycleState // ."lifecycle-state" // "") | ascii_upcase | IN("DELETED"; "DELETING") | not))
       | sort_by(.timeCreated // ."time-created" // "")
       | reverse
       | .[]
@@ -256,6 +257,59 @@ create_instance() {
       --output json
   )"
   echo "${out}" | jq -r '.data.id'
+}
+
+resolve_instance_ips() {
+  local id="$1"
+  local vnics_json priv pub
+
+  # Prefer list-vnics if available (most reliable).
+  set +e
+  vnics_json="$(oci container-instances container-instance list-vnics --container-instance-id "${id}" --output json 2>/dev/null)"
+  local rc=$?
+  set -e
+
+  if [[ $rc -eq 0 && -n "${vnics_json}" ]]; then
+    priv="$(echo "${vnics_json}" | jq -r '
+      (if type=="array" then . else (.data // []) end)
+      | .[0]
+      | (.privateIp // ."private-ip" // .privateIpAddress // ."private-ip-address" // empty)
+    ' | sed '/^null$/d' | head -n1)"
+    pub="$(echo "${vnics_json}" | jq -r '
+      (if type=="array" then . else (.data // []) end)
+      | .[0]
+      | (.publicIp // ."public-ip" // .publicIpAddress // ."public-ip-address" // empty)
+    ' | sed '/^null$/d' | head -n1)"
+  fi
+
+  # Fallback: try to read from container-instance get response.
+  if [[ -z "${priv:-}" || "${priv:-}" == "null" || -z "${pub:-}" || "${pub:-}" == "null" ]]; then
+    local details
+    details="$(oci container-instances container-instance get --container-instance-id "${id}" --output json)"
+    priv="${priv:-$(
+      echo "${details}" | jq -r '
+        .data
+        | (
+            (.vnics[0].privateIp // .vnics[0]."private-ip")
+            // (.primaryVnic?.privateIp // .primaryVnic?."private-ip")
+            // empty
+          )
+      ' | sed '/^null$/d' | head -n1
+    )}"
+    pub="${pub:-$(
+      echo "${details}" | jq -r '
+        .data
+        | (
+            (.vnics[0].publicIp // .vnics[0]."public-ip")
+            // (.primaryVnic?.publicIp // .primaryVnic?."public-ip")
+            // empty
+          )
+      ' | sed '/^null$/d' | head -n1
+    )}"
+  fi
+
+  [[ -n "${priv:-}" && "${priv}" != "null" ]] && echo "NEW_INSTANCE_PRIVATE_IP=${priv}" >> "${GITHUB_ENV}"
+  [[ -n "${pub:-}" && "${pub}" != "null" ]] && echo "NEW_INSTANCE_PUBLIC_IP=${pub}" >> "${GITHUB_ENV}"
 }
 
 get_instance_images() {
@@ -366,6 +420,7 @@ EOF
 NEW_INSTANCE_ID=""
 if [[ "${DEPLOY_STRATEGY}" == "replace" ]]; then
   echo "Replace strategy: delete all matching instances, then create a fresh one."
+  echo "DID_REPLACE=true" >> "${GITHUB_ENV}"
   mapfile -t ids < <(list_matching_instance_ids)
   if (( ${#ids[@]} > 0 )); then
     for id in "${ids[@]}"; do
@@ -403,6 +458,7 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
 
       if [[ "${FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH}" == "true" ]]; then
         log "Falling back to REPLACE because we cannot verify the running image via OCI API fields."
+        echo "DID_REPLACE=true" >> "${GITHUB_ENV}"
         for id in "${ids[@]}"; do
           delete_instance_and_wait_gone "${id}"
         done
@@ -429,6 +485,7 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
         log "OCI still does NOT report the desired image (${IMAGE}) after update."
         if [[ "${FALLBACK_TO_REPLACE_ON_IMAGE_MISMATCH}" == "true" ]]; then
           log "Falling back to REPLACE to guarantee the new image is deployed."
+          echo "DID_REPLACE=true" >> "${GITHUB_ENV}"
           for id in "${ids[@]}"; do
             delete_instance_and_wait_gone "${id}"
           done
@@ -458,6 +515,21 @@ fi
 
 echo "Deployed container instance id: ${NEW_INSTANCE_ID}"
 echo "CONTAINER_INSTANCE_ID=${NEW_INSTANCE_ID}" >> "${GITHUB_ENV}"
+
+# Resolve instance IPs for LB update.
+resolve_instance_ips "${NEW_INSTANCE_ID}" || true
+
+# Choose IP to use for LB update.
+BACKEND_IP_TYPE="${BACKEND_IP_TYPE:-private}" # private | public
+NEW_INSTANCE_IP=""
+if [[ "${BACKEND_IP_TYPE}" == "public" ]]; then
+  NEW_INSTANCE_IP="${NEW_INSTANCE_PUBLIC_IP:-}"
+else
+  NEW_INSTANCE_IP="${NEW_INSTANCE_PRIVATE_IP:-}"
+fi
+if [[ -n "${NEW_INSTANCE_IP}" ]]; then
+  echo "NEW_INSTANCE_IP=${NEW_INSTANCE_IP}" >> "${GITHUB_ENV}"
+fi
 
 # Try to extract a reasonable IP for downstream steps (LB update).
 DETAILS="$(oci container-instances container-instance get --container-instance-id "${NEW_INSTANCE_ID}" --output json)"
@@ -490,24 +562,10 @@ echo "${DETAILS}" | jq -r '
     )
 ' >&2 || true
 
-NEW_IP="$(
-  echo "${DETAILS}" | jq -r '
-    .data
-    | (
-        .publicIp
-        // ."public-ip"
-        // .ipAddress
-        // ."ip-address"
-        // (.vnics[0].publicIp // .vnics[0]."public-ip")
-        // (.vnics[0].privateIp // .vnics[0]."private-ip")
-      )
-  '
-)"
-if [[ -n "${NEW_IP}" && "${NEW_IP}" != "null" ]]; then
-  echo "Resolved new instance IP: ${NEW_IP}"
-  echo "NEW_INSTANCE_IP=${NEW_IP}" >> "${GITHUB_ENV}"
+if [[ -n "${NEW_INSTANCE_IP:-}" ]]; then
+  log "Resolved NEW_INSTANCE_IP (${BACKEND_IP_TYPE}) = ${NEW_INSTANCE_IP}"
 else
-  echo "Could not resolve instance IP from OCI response; LB update (if enabled) may need manual NEW_INSTANCE_IP." >&2
+  log "Could not resolve NEW_INSTANCE_IP; LB update will not work until IP resolution is fixed or provided manually."
 fi
 
 
