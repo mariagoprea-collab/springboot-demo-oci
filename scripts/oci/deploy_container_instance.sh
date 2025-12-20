@@ -341,11 +341,34 @@ resolve_instance_ips() {
       if [[ -n "${vnic_id}" ]]; then
         log "Resolving IPs via Core Networking VNIC: ${vnic_id}"
         vnic_json="$(oci network vnic get --vnic-id "${vnic_id}" --output json)"
+        # Helpful debug if parsing fails (safe: no secrets here).
+        echo "${vnic_json}" > oci_vnic_get.json
+
         if [[ -z "${priv}" ]]; then
-          priv="$(echo "${vnic_json}" | jq -r '.data.privateIp // .data."private-ip" // empty' | sed '/^null$/d' | head -n1)"
+          priv="$(echo "${vnic_json}" | jq -r '
+            .data
+            | (
+                .privateIp
+                // ."private-ip"
+                // .privateIpAddress
+                // ."private-ip-address"
+                // .ipAddress
+                // ."ip-address"
+                // empty
+              )
+          ' | sed '/^null$/d' | head -n1)"
         fi
         if [[ -z "${pub}" ]]; then
-          pub="$(echo "${vnic_json}" | jq -r '.data.publicIp // .data."public-ip" // empty' | sed '/^null$/d' | head -n1)"
+          pub="$(echo "${vnic_json}" | jq -r '
+            .data
+            | (
+                .publicIp
+                // ."public-ip"
+                // .publicIpAddress
+                // ."public-ip-address"
+                // empty
+              )
+          ' | sed '/^null$/d' | head -n1)"
         fi
 
         # If public IP still missing, try publicIpId -> public-ip get.
@@ -357,6 +380,13 @@ resolve_instance_ips() {
             pub_json="$(oci network public-ip get --public-ip-id "${pub_id}" --output json)"
             pub="$(echo "${pub_json}" | jq -r '.data.ipAddress // .data."ip-address" // empty' | sed '/^null$/d' | head -n1)"
           fi
+        fi
+
+        if [[ -z "${priv}" ]]; then
+          log "Could not parse private IP from `oci network vnic get` response. Debug keys:"
+          jq -r '.data | keys[]' oci_vnic_get.json 2>/dev/null | head -n 50 | while read -r k; do log "  - ${k}"; done
+          log "VNIC field sample:"
+          jq -r '.data | {privateIp, publicIp, privateIpAddress, publicIpId, subnetId, vcnId} | tostring' oci_vnic_get.json 2>/dev/null >&2 || true
         fi
       else
         log "Could not find VNIC OCID on container instance get response; cannot resolve IPs automatically."
