@@ -143,22 +143,74 @@ wait_for_state_in() {
 delete_instance_and_wait_gone() {
   local id="$1"
   log "Deleting container instance: ${id}"
-  oci container-instances container-instance delete --container-instance-id "${id}" --force
 
-  # Wait until get fails or state becomes a terminal one.
+  # Delete is async; OCI typically returns a work-request id we can poll.
+  local delete_out wr_id
+  delete_out="$(
+    oci container-instances container-instance delete \
+      --container-instance-id "${id}" \
+      --force \
+      --output json
+  )"
+  wr_id="$(echo "${delete_out}" | jq -r '."opc-work-request-id" // .opcWorkRequestId // empty')"
+
+  # Prefer polling work request when available (more reliable than polling GET).
+  if [[ -n "${wr_id}" && "${wr_id}" != "null" ]]; then
+    log "Delete work request: ${wr_id}"
+    local start now state
+    start="$(date +%s)"
+    while true; do
+      now="$(date +%s)"
+      if (( now - start > 1800 )); then
+        log "Timed out waiting for delete work request ${wr_id} (instance ${id})"
+        return 1
+      fi
+
+      state="$(
+        oci container-instances work-request get \
+          --work-request-id "${wr_id}" \
+          --output json | jq -r '.data.status // .data."status" // empty'
+      )"
+
+      log "Delete progress for ${id}: work-request status=${state:-unknown} (elapsed=$((now - start))s)"
+
+      case "${state}" in
+        SUCCEEDED|Succeeded)
+          return 0
+          ;;
+        FAILED|Failed)
+          log "Delete work request FAILED. Dumping errors (if any):"
+          oci container-instances work-request-error list \
+            --work-request-id "${wr_id}" \
+            --output json >&2 || true
+          return 1
+          ;;
+        CANCELED|Canceled)
+          log "Delete work request CANCELED."
+          return 1
+          ;;
+        *)
+          sleep 15
+          ;;
+      esac
+    done
+  fi
+
+  # Fallback: wait until GET no longer returns the resource (silent delete response).
   local start now
   start="$(date +%s)"
   while true; do
     now="$(date +%s)"
-    if (( now - start > 1200 )); then
-      echo "Timed out waiting for deletion of ${id}" >&2
+    if (( now - start > 1800 )); then
+      log "Timed out waiting for deletion of ${id}"
       return 1
     fi
 
     if ! oci container-instances container-instance get --container-instance-id "${id}" --output json >/dev/null 2>&1; then
       return 0
     fi
-    sleep 10
+    log "Delete progress for ${id}: still present (elapsed=$((now - start))s)"
+    sleep 15
   done
 }
 
