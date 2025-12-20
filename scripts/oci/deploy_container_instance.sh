@@ -26,6 +26,7 @@ require_env "DB_USER"
 require_env "DB_PASS"
 
 DEPLOY_STRATEGY="${DEPLOY_STRATEGY:-update}" # update | replace
+CLEANUP_DUPLICATES="${CLEANUP_DUPLICATES:-true}" # true | false (only used for update strategy)
 SHAPE_OCPUS="${SHAPE_OCPUS:-1}"
 SHAPE_MEMORY_GB="${SHAPE_MEMORY_GB:-2}"
 
@@ -84,8 +85,19 @@ list_matching_instance_ids() {
     --compartment-id "${COMPARTMENT_ID}" \
     --all \
     --output json | jq -r --arg name "${CONTAINER_INSTANCE_NAME}" '
-      # OCI CLI sometimes returns {data:[...]} and sometimes returns [...] depending on cmd/service.
-      (if type == "array" then . else (.data // []) end)
+      # Normalize list output across OCI CLI variations:
+      # - [...]
+      # - { data: [...] }
+      # - { data: { items: [...] } }
+      def items:
+        if type == "array" then .
+        elif (has("data") and (.data|type) == "array") then .data
+        elif (has("data") and (.data|type) == "object" and (.data|has("items"))) then (.data.items // [])
+        elif has("items") then (.items // [])
+        else [] end;
+
+      items
+      | map(select(type == "object"))
       | map(select((.displayName // ."display-name" // "") == $name))
       | sort_by(.timeCreated // ."time-created" // "")
       | reverse
@@ -198,6 +210,12 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
     update_instance "${NEW_INSTANCE_ID}"
     # Some tenants briefly go through UPDATING then ACTIVE.
     wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active" "UPDATING" "Updating"
+    if [[ "${CLEANUP_DUPLICATES}" == "true" ]] && (( ${#ids[@]} > 1 )); then
+      log "Found ${#ids[@]} instances named ${CONTAINER_INSTANCE_NAME}. Cleaning up older duplicates (keeping newest: ${NEW_INSTANCE_ID})"
+      for ((i=1; i<${#ids[@]}; i++)); do
+        delete_instance_and_wait_gone "${ids[$i]}"
+      done
+    fi
   else
     NEW_INSTANCE_ID="$(create_instance)"
     wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
