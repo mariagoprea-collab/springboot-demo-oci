@@ -6,6 +6,52 @@ log() {
   echo "$*" >&2
 }
 
+wait_for_ci_work_request() {
+  local wr_id="$1"
+  local label="${2:-work-request}"
+
+  if [[ -z "${wr_id}" || "${wr_id}" == "null" ]]; then
+    return 0
+  fi
+
+  local start now state
+  start="$(date +%s)"
+  while true; do
+    now="$(date +%s)"
+    if (( now - start > 1800 )); then
+      log "Timed out waiting for ${label} ${wr_id}"
+      return 1
+    fi
+
+    state="$(
+      oci container-instances work-request get \
+        --work-request-id "${wr_id}" \
+        --output json | jq -r '.data.status // .data."status" // empty'
+    )"
+    log "${label} status=${state:-unknown} (elapsed=$((now - start))s)"
+
+    case "${state}" in
+      SUCCEEDED|Succeeded)
+        return 0
+        ;;
+      FAILED|Failed)
+        log "${label} FAILED. Dumping errors (if any):"
+        oci container-instances work-request-error list \
+          --work-request-id "${wr_id}" \
+          --output json >&2 || true
+        return 1
+        ;;
+      CANCELED|Canceled)
+        log "${label} CANCELED."
+        return 1
+        ;;
+      *)
+        sleep 15
+        ;;
+    esac
+  done
+}
+
 require_env() {
   local name="$1"
   if [[ -z "${!name:-}" ]]; then
@@ -157,43 +203,8 @@ delete_instance_and_wait_gone() {
   # Prefer polling work request when available (more reliable than polling GET).
   if [[ -n "${wr_id}" && "${wr_id}" != "null" ]]; then
     log "Delete work request: ${wr_id}"
-    local start now state
-    start="$(date +%s)"
-    while true; do
-      now="$(date +%s)"
-      if (( now - start > 1800 )); then
-        log "Timed out waiting for delete work request ${wr_id} (instance ${id})"
-        return 1
-      fi
-
-      state="$(
-        oci container-instances work-request get \
-          --work-request-id "${wr_id}" \
-          --output json | jq -r '.data.status // .data."status" // empty'
-      )"
-
-      log "Delete progress for ${id}: work-request status=${state:-unknown} (elapsed=$((now - start))s)"
-
-      case "${state}" in
-        SUCCEEDED|Succeeded)
-          return 0
-          ;;
-        FAILED|Failed)
-          log "Delete work request FAILED. Dumping errors (if any):"
-          oci container-instances work-request-error list \
-            --work-request-id "${wr_id}" \
-            --output json >&2 || true
-          return 1
-          ;;
-        CANCELED|Canceled)
-          log "Delete work request CANCELED."
-          return 1
-          ;;
-        *)
-          sleep 15
-          ;;
-      esac
-    done
+    wait_for_ci_work_request "${wr_id}" "delete(${id})"
+    return 0
   fi
 
   # Fallback: wait until GET no longer returns the resource (silent delete response).
@@ -255,25 +266,38 @@ EOF
   oci container-instances container-instance update \
     --container-instance-id "${id}" \
     --update-container-instance-details file://update-details.json \
-    --output json 1>oci_update_stdout.log 2>oci_update_stderr.log
+    --output json 1>oci_update_stdout_1.log 2>oci_update_stderr_1.log
   local rc=$?
+  local out_file="oci_update_stdout_1.log"
+  local err_file="oci_update_stderr_1.log"
 
   if [[ $rc -ne 0 ]]; then
     # Fallback: try from-json format (older/newer CLI variants).
     oci container-instances container-instance update \
       --from-json file://update-from-json.json \
-      --output json 1>>oci_update_stdout.log 2>>oci_update_stderr.log
+      --output json 1>oci_update_stdout_2.log 2>oci_update_stderr_2.log
     rc=$?
+    out_file="oci_update_stdout_2.log"
+    err_file="oci_update_stderr_2.log"
   fi
   set -e
 
   if [[ $rc -ne 0 ]]; then
     log "OCI update failed (rc=$rc). STDOUT/STDERR below:"
     log "=============== UPDATE STDOUT ==============="
-    cat oci_update_stdout.log >&2 || true
+    cat "${out_file}" >&2 || true
     log "=============== UPDATE STDERR ==============="
-    cat oci_update_stderr.log >&2 || true
+    cat "${err_file}" >&2 || true
     return $rc
+  fi
+
+  # If the update returns a work request, wait for it. This avoids "deploy succeeded"
+  # while the instance is still pulling/restarting containers.
+  local wr_id
+  wr_id="$(jq -r '."opc-work-request-id" // .opcWorkRequestId // empty' "${out_file}" 2>/dev/null || true)"
+  if [[ -n "${wr_id}" && "${wr_id}" != "null" ]]; then
+    log "Update work request: ${wr_id}"
+    wait_for_ci_work_request "${wr_id}" "update(${id})"
   fi
 }
 
@@ -296,8 +320,8 @@ elif [[ "${DEPLOY_STRATEGY}" == "update" ]]; then
   if (( ${#ids[@]} > 0 )); then
     NEW_INSTANCE_ID="${ids[0]}"
     update_instance "${NEW_INSTANCE_ID}"
-    # Some tenants briefly go through UPDATING then ACTIVE.
-    wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active" "UPDATING" "Updating"
+    # Ensure instance is back to ACTIVE after update.
+    wait_for_state_in "${NEW_INSTANCE_ID}" 1800 "ACTIVE" "Active"
     if [[ "${CLEANUP_DUPLICATES}" == "true" ]] && (( ${#ids[@]} > 1 )); then
       log "Found ${#ids[@]} instances named ${CONTAINER_INSTANCE_NAME}. Cleaning up older duplicates (keeping newest: ${NEW_INSTANCE_ID})"
       for ((i=1; i<${#ids[@]}; i++)); do
@@ -318,6 +342,11 @@ echo "CONTAINER_INSTANCE_ID=${NEW_INSTANCE_ID}" >> "${GITHUB_ENV}"
 
 # Try to extract a reasonable IP for downstream steps (LB update).
 DETAILS="$(oci container-instances container-instance get --container-instance-id "${NEW_INSTANCE_ID}" --output json)"
+
+log "Post-deploy verification (OCI):"
+echo "${DETAILS}" | jq -r '.data | "  - lifecycleState=\(.lifecycleState // ."lifecycle-state" // "unknown")\n  - displayName=\(.displayName // ."display-name" // "unknown")"' >&2 || true
+echo "${DETAILS}" | jq -r '.data.containers // [] | "  - containers:\n" + (map("    - \(.displayName // ."display-name" // "container"): \(.imageUrl // ."image-url" // "unknown")") | join("\n"))' >&2 || true
+
 NEW_IP="$(
   echo "${DETAILS}" | jq -r '
     .data
