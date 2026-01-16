@@ -26,7 +26,6 @@ env:
   OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
 
   # ---- OCIR settings ----
-  NAMESPACE: frnhkcj2u67r
   OCIR_REGION_KEY: fra
   IMAGE_REPO: demo
 
@@ -68,10 +67,21 @@ jobs:
       - name: Build JAR (Maven)
         run: mvn -B clean package -DskipTests
 
+      - name: Install OCI CLI + jq (for namespace lookup)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user "oci-cli>=3.0.0"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
       - name: Build + push Docker image
         id: meta
         run: |
           set -euo pipefail
+          NAMESPACE=$(oci os ns get | jq .data | tr -d '"')
           IMAGE_SHA="${OCIR_REGION_KEY}.ocir.io/${NAMESPACE}/${IMAGE_REPO}:${GITHUB_SHA}"
           IMAGE_LATEST="${OCIR_REGION_KEY}.ocir.io/${NAMESPACE}/${IMAGE_REPO}:latest"
 
@@ -110,7 +120,7 @@ jobs:
           set -euo pipefail
           python3 -m pip install --user "oci-cli>=3.0.0"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
+          
       - name: Deploy (update or replace)
         run: |
           set -euo pipefail
