@@ -26,15 +26,15 @@ env:
   OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
 
   # ---- OCIR settings ----
-  OCIR_REGION_KEY: fra
-  IMAGE_REPO: demo_repo
+  OCIR_REGION_KEY: ${{ vars.OCIR_REGION_KEY }}
+  IMAGE_REPO: ${{ vars.IMAGE_REPO }}
 
-  # ---- Container Instance settings (prefer moving these to GitHub "Variables" later) ----
-  COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
-  SUBNET_ID: ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaadfimsqrj4u2zqnky6iprdfboyhfnqbiuc3p6yll3efhwz6i3zvpq
-  SHAPE: CI.Standard.E4.Flex
-  CONTAINER_INSTANCE_NAME: demo-app
-  CONTAINER_DISPLAY_NAME: demo-app
+  # ---- Container Instance settings ----
+  COMPARTMENT_ID: ${{ vars.COMPARTMENT_ID }}
+  SUBNET_ID: ${{ vars.SUBNET_ID }}
+  SHAPE: ${{ vars.SHAPE }}
+  CONTAINER_INSTANCE_NAME: ${{ vars.CONTAINER_INSTANCE_NAME }}
+  CONTAINER_DISPLAY_NAME: ${{ vars.CONTAINER_DISPLAY_NAME }}
   SHAPE_OCPUS: "1"
   SHAPE_MEMORY_GB: "2"
 
