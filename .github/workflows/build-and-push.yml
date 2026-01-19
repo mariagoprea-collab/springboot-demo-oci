@@ -27,7 +27,7 @@ env:
 
   # ---- OCIR settings ----
   OCIR_REGION_KEY: fra
-  IMAGE_REPO: demo
+  IMAGE_REPO: demo_repo
 
   # ---- Container Instance settings (prefer moving these to GitHub "Variables" later) ----
   COMPARTMENT_ID: ocid1.compartment.oc1..aaaaaaaaegbhl77vqt5otatpgqdjhmlacq5snnzu7wrrt2wbgy57zwkaczfa
