@@ -1,5 +1,4 @@
 # Spring Boot Demo on OCI
-
 This repository contains a **Spring Boot demo application** showcasing a production-style deployment on **Oracle Cloud Infrastructure (OCI)** using **GitHub Actions**, **OCIR**, **OCI Container Instances**, **OCI Load Balancer**, and a **PostgreSQL database in OCI**.
 
 The project demonstrates a real-world **CI/CD pipeline** with **zero-downtime (blue/green) deployments**.
