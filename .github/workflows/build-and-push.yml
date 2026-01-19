@@ -39,8 +39,8 @@ env:
   SHAPE_MEMORY_GB: "2"
 
   # ---- App config ----
-  DB_HOST: 10.0.1.99
-  DB_NAME: postgres
+  DB_HOST: ${{ vars.DB_HOST }}
+  DB_NAME: ${{ vars.DB_NAME }}
 
 jobs:
   build:
