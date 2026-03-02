@@ -8,7 +8,6 @@ The project demonstrates a real-world **CI/CD pipeline** with **zero-downtime (b
 ## Overview
 
 
-
 The application is packaged as a **Docker container** and deployed to **OCI Container Instances**.
 Traffic is routed through an **OCI Load Balancer**, while persistent data is stored in a **PostgreSQL database** on OCI.
 
